@@ -1,0 +1,9 @@
+program: [[statment | expression] ]*
+statment: [declaration | definition]
+declaration: Extern prototype
+definition: Def prototype expression End
+prototype: Ident OpeningParenthesis [Ident Comma ?]* ClosingParenthesis
+expression: [primary_expr (Op primary_expr)*]
+primary_expr: [Ident | Number | call_expr | parenthesis_expr]
+call_expr: Ident OpeningParenthesis [Ident Comma ?]* ClosingParenthesis
+parenthesis_expr: OpeningParenthesis expression ClosingParenthesis
