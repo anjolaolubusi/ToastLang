@@ -6,5 +6,5 @@ prototype: Ident OpeningParenthesis [Ident Comma ?]* ClosingParenthesis
 expression: [primary_expr (operator primary_expr)*]
 operator: Plus | Minus | Multiply | Divide | Modulus 
 primary_expr: [Ident | Number | call_expr | parenthesis_expr]
-call_expr: Ident OpeningParenthesis [Ident Comma ?]* ClosingParenthesis
+call_expr: Ident OpeningParenthesis [expression Comma ?]* ClosingParenthesis
 parenthesis_expr: OpeningParenthesis expression ClosingParenthesis

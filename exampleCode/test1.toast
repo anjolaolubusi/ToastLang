@@ -8,6 +8,10 @@ def foo(a, b):
     return (a+b) + (a*b)
 end
 
+def bar(a):
+    return a
+end
+
 print(foo(1,3))
 print(sin(1))
 print(sin(0))
