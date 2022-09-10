@@ -1,4 +1,6 @@
+#![allow(non_snake_case)]
 use logos::Logos;
+
 
 #[derive(PartialEq, Clone, Copy, Debug, Logos)]
 pub enum Token {
@@ -12,9 +14,9 @@ pub enum Token {
     ClosingParenthesis,
     #[token(",")]
     Comma,
-    #[regex("[A-Za-z0-9]+")]
+    #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
-    #[regex("(-)?[0-9]*(.[0-9]+)?")]
+    #[regex(r"(-)?[0-9]*(\.[0-9]+)?")]
     Number,
     #[token("+")]
     Plus,
@@ -28,8 +30,10 @@ pub enum Token {
     Modulus,
     #[token("=")]
     Equals,
-    #[regex(" +")]
+    #[regex(r"[ ]+|(\n|\r|\r\n)")]
     WhiteSpace,
+    #[regex(r"([\\])[\\][\w]+|([\\][\*])[\w|\n|\r|\r\n]+[\*][\\]")]
+    Comment,
     #[token(":")]
     FuncBegin,
     #[token("end")]
@@ -89,7 +93,6 @@ mod tests {
         lex_check_word("38478.23324", Token:: Number);
         lex_check_word("-7848734", Token:: Number);
         lex_check_word("-894783847.559", Token:: Number);
-        lex_check_word("-4e45", Token:: Number);
     }
 
     #[test]

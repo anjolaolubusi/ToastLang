@@ -1,11 +1,8 @@
+#![allow(non_snake_case)]
 use logos::{Lexer, Logos};
 use crate::lexer::Token;
 use std::collections::HashMap;
 
-/*
-TODO: Parser uses Visitor Pattern
-TODO: Figure out way to add accept function to Expr enum
-*/
 
 
 #[derive(PartialEq, Clone, Debug)]
@@ -51,6 +48,7 @@ impl<'a> Parser <'a>{
         BinOp.insert("+".to_string(), 20);
         BinOp.insert("-".to_string(), 20);
         BinOp.insert("*".to_string(), 40);
+        BinOp.insert("/".to_string(), 30);
 
         Parser {
             tokens: Vec::<Token>::new()
@@ -79,7 +77,7 @@ impl<'a> Parser <'a>{
         loop{
         self.current_token = self.lexer.next();
         println!("Current Token is: {:?} Current slice is: {}", self.current_token.clone().unwrap_or(Token::WhiteSpace), self.lexer.slice());
-        if(self.current_token.is_none() || self.current_token.unwrap() != Token::WhiteSpace){
+        if(self.current_token.is_none() || self.current_token.unwrap() != Token::WhiteSpace ){
             break;
         }
         }
@@ -96,7 +94,7 @@ impl<'a> Parser <'a>{
             let result = match self.current_token.unwrap() {
                 Token::Extern => self.ParseExtern(),
                 Token::Def => self.ParseDef(),
-                _ => Some(ASTNode::ExpressionNode(self.ParseExpr().unwrap()))                
+                _ => self.ParseTopLevel()
             };
             if result.is_none() {
                 return  None;
@@ -106,9 +104,18 @@ impl<'a> Parser <'a>{
         return Some(program);
     }
 
+    pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
+        let E = self.ParseExpr();
+        if (!E.is_none()){
+            return Some(ASTNode::ExpressionNode(E.unwrap()))
+        }
+        self.LogErrorASTNode("Can not parse expression")
+    }
+
     pub fn ParseExtern(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Extern
         let prototype = self.ParsePrototype();
+        //self.getNewToken(); //Consume ')'
         let astNode = ASTNode::ExternNode(prototype.unwrap());
         return Some(astNode);
     }
@@ -116,6 +123,7 @@ impl<'a> Parser <'a>{
     pub fn ParseDef(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Def
         let prototype = self.ParsePrototype();
+        self.getNewToken(); //Consume ')'
         if(prototype.is_none()){
             return None;
         }
@@ -130,7 +138,7 @@ impl<'a> Parser <'a>{
         if( self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd){
             return self.LogErrorASTNode("Expected a 'end' here");
         }
-        self.getNewToken(); //Consume End
+        //self.getNewToken(); //Consume End
         let funcNode = FuncAST{
             Proto: prototype.unwrap(),
             Body: body.unwrap()
@@ -163,7 +171,6 @@ impl<'a> Parser <'a>{
         if(self.current_token.unwrap() != Token::ClosingParenthesis){
             return self.LogErrorProtoAST("Expected a ')' here");
         }
-        self.getNewToken(); //Consume ')'
         let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone() };
         return Some(proto)
         
@@ -176,6 +183,7 @@ impl<'a> Parser <'a>{
             },
             Token::Number => {
                 let result = ExprAST::NumberExpr(self.lexer.slice().parse::<f64>().unwrap());
+                self.getNewToken();
                 return Some(result);
             },
             Token::OpeningParenthesis => {
@@ -234,6 +242,7 @@ impl<'a> Parser <'a>{
         if(LHS_EXPR.is_none()){
             return None;
         }
+        //self.getNewToken(); //Eat LHS
         return self.ParseBinOpRHS(0, LHS_EXPR);
     }
 
@@ -267,5 +276,44 @@ impl<'a> Parser <'a>{
         let RHS_BOX: Box<ExprAST> = Box::new(RHS.unwrap());
         LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX })
         }
+    }
+
+    pub fn UpdateSourceString(&mut self, newSource: &'a String){
+        self.lexer = Token::lexer(&newSource);
+    }
+}
+
+mod tests {
+    use crate::parser::Parser;
+
+    
+    
+    #[test]
+    fn checkBasicParse(){
+        let source = "def foo (a, b): a-b end";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 1)
+    }
+
+    #[test]
+    fn checkTwoFuncs(){
+        let source = "def foo (a, b): \n a-b \n end \n def boo (a, b): a+b end";
+        println!("{}", source);
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn checkExprParsing(){
+        let source = "4 + 5";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 1);
+
     }
 }
