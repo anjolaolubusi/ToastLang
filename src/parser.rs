@@ -76,8 +76,8 @@ impl<'a> Parser <'a>{
     pub fn getNewToken(&mut self){
         loop{
         self.current_token = self.lexer.next();
-        println!("Current Token is: {:?} Current slice is: {}", self.current_token.clone().unwrap_or(Token::WhiteSpace), self.lexer.slice());
-        if(self.current_token.is_none() || self.current_token.unwrap() != Token::WhiteSpace ){
+        //println!("Current Token is: {:?} Current slice is: {}", self.current_token.clone().unwrap_or(Token::WhiteSpace), self.lexer.slice());
+        if self.current_token.is_none() || self.current_token.unwrap() != Token::WhiteSpace {
             break;
         }
         }
@@ -87,7 +87,7 @@ impl<'a> Parser <'a>{
         let mut program: Vec<ASTNode> = Vec::new();
         loop {
             self.getNewToken();
-            println!("{:?}", program);
+            //println!("{:?}", program);
             if self.current_token.is_none() {
                 break;
             }
@@ -106,7 +106,7 @@ impl<'a> Parser <'a>{
 
     pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
         let E = self.ParseExpr();
-        if (!E.is_none()){
+        if !E.is_none() {
             return Some(ASTNode::ExpressionNode(E.unwrap()))
         }
         self.LogErrorASTNode("Can not parse expression")
@@ -124,18 +124,18 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //Consume Def
         let prototype = self.ParsePrototype();
         self.getNewToken(); //Consume ')'
-        if(prototype.is_none()){
+        if prototype.is_none() {
             return None;
         }
-        if(self.current_token.unwrap() != Token::FuncBegin){
+        if self.current_token.unwrap() != Token::FuncBegin {
             return self.LogErrorASTNode("Expected a ':' here");
         }
         self.getNewToken(); //Consume ':'
         let body = self.ParseExpr();
-        if(body.is_none()){
+        if body.is_none() {
             return None;
         }
-        if( self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd){
+        if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogErrorASTNode("Expected a 'end' here");
         }
         //self.getNewToken(); //Consume End
@@ -143,17 +143,17 @@ impl<'a> Parser <'a>{
             Proto: prototype.unwrap(),
             Body: body.unwrap()
         };
-        let astNode = ASTNode::FunctionNode((funcNode));
+        let astNode = ASTNode::FunctionNode(funcNode);
         return Some(astNode);
     }
 
     pub fn ParsePrototype(&mut self) -> Option<ProtoAST>{
-        if(self.current_token.is_none() || self.current_token.unwrap() != Token::Ident){
+        if self.current_token.is_none() || self.current_token.unwrap() != Token::Ident {
             return self.LogErrorProtoAST("Expected function name here");
         }
         let prototypeName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Identifer
-        if(self.current_token.unwrap() != Token::OpeningParenthesis){
+        if self.current_token.unwrap() != Token::OpeningParenthesis {
             return self.LogErrorProtoAST("Expected a '(' here");
         }
         self.getNewToken(); //Consume '('
@@ -168,7 +168,7 @@ impl<'a> Parser <'a>{
                 _ => break
             }
         }
-        if(self.current_token.unwrap() != Token::ClosingParenthesis){
+        if self.current_token.unwrap() != Token::ClosingParenthesis {
             return self.LogErrorProtoAST("Expected a ')' here");
         }
         let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone() };
@@ -189,7 +189,7 @@ impl<'a> Parser <'a>{
             Token::OpeningParenthesis => {
                 self.getNewToken(); //Consumes '('
                 let expr = self.ParseExpr();
-                if(self.current_token.unwrap() != Token::ClosingParenthesis){
+                if self.current_token.unwrap() != Token::ClosingParenthesis {
                     return self.LogErrorExprAST("Expected a ')' here");
                 }
                 self.getNewToken(); //Consumes ')'
@@ -202,23 +202,23 @@ impl<'a> Parser <'a>{
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
         let IdName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Ident
-        if(self.current_token.is_none() || self.current_token.unwrap() != Token::OpeningParenthesis){
+        if self.current_token.is_none() || self.current_token.unwrap() != Token::OpeningParenthesis {
             return Some(ExprAST::VariableExpr(IdName));
         }
         self.getNewToken(); //Consume '('
         let mut newArgs: Vec<ExprAST> = Vec::new();
         loop{
             let parameter = self.ParseExpr();
-            if(parameter.is_none()){
+            if parameter.is_none() {
                 return None;
             }
             newArgs.push(parameter.unwrap());
-            if(self.current_token.unwrap() != Token::Comma){
+            if self.current_token.unwrap() != Token::Comma {
                 break;
             }
             self.getNewToken(); //Consume Comma
         }
-        if(self.current_token.unwrap() != Token::ClosingParenthesis){
+        if self.current_token.unwrap() != Token::ClosingParenthesis {
             //Error
         }
         self.getNewToken(); //Consume ')'
@@ -226,12 +226,12 @@ impl<'a> Parser <'a>{
     }
 
     pub fn GetTokPrecedence(&mut self)-> i64{
-        if(!self.lexer.slice().is_ascii()){
+        if !self.lexer.slice().is_ascii() {
             return -1;
         }
 
         let TokPrec = self.BinOpPrecedence.get(&self.lexer.slice().to_string()).unwrap_or(&-1).to_owned();
-        if (TokPrec <= 0){
+        if TokPrec <= 0 {
             return -1;
         }
         return TokPrec;
@@ -239,7 +239,7 @@ impl<'a> Parser <'a>{
 
     pub fn ParseExpr(&mut self) -> Option<ExprAST>{
         let LHS_EXPR = self.ParsePrimaryExpr();
-        if(LHS_EXPR.is_none()){
+        if LHS_EXPR.is_none() {
             return None;
         }
         //self.getNewToken(); //Eat LHS
@@ -250,7 +250,7 @@ impl<'a> Parser <'a>{
         loop{
         let TokPrec = self.GetTokPrecedence();
 
-        if(TokPrec < ExprPrec){
+        if TokPrec < ExprPrec {
             return LHS;
         }
 
@@ -259,14 +259,14 @@ impl<'a> Parser <'a>{
         
         let mut RHS = self.ParsePrimaryExpr();
 
-        if(RHS.is_none()){
+        if RHS.is_none() {
             return None;
         }
 
         let NextPrec = self.GetTokPrecedence();
-        if(TokPrec < NextPrec){
+        if TokPrec < NextPrec {
             RHS = self.ParseBinOpRHS(TokPrec + 1, LHS.clone());
-            if(RHS.is_none()){
+            if RHS.is_none() {
                 return None;
             }
         }

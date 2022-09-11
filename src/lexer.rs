@@ -1,4 +1,3 @@
-#![allow(non_snake_case)]
 use logos::Logos;
 
 
@@ -45,9 +44,9 @@ pub enum Token {
 mod tests {
     use super::*;
 
-    fn lex_check_word(word: &'static str, correctToken: Token){
+    fn lex_check_word(word: &'static str, correct_token: Token){
         let mut lex = Token::lexer(word);
-        assert_eq!(lex.next(), Some(correctToken));
+        assert_eq!(lex.next(), Some(correct_token));
     }
 
     #[test]

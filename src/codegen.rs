@@ -1,9 +1,9 @@
-#![allow(non_snake_case)]
 use std::collections::HashMap;
 use crate::{lexer::{Token}, parser::{ProtoAST, FuncAST}};
-use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum}, types::BasicMetadataTypeEnum};
+use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
 use inkwell::builder::Builder;
 use crate::parser::{ASTNode, ExprAST};
+use uuid::Uuid;
 
 
 pub struct Compiler<'a, 'ctx> {
@@ -11,7 +11,8 @@ pub struct Compiler<'a, 'ctx> {
     pub builder: &'a Builder<'ctx>, //Builds LLVM instructions
     pub module: &'a Module<'ctx>, //Stores functions and global variables
     pub expr: &'a ASTNode, // Current ASTNode
-
+    pub firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
+    pub excutionEngine: &'a ExecutionEngine<'ctx>,
     variables: HashMap<String, PointerValue<'ctx>>, //Keeps track of variables
     fn_value_opt: Option<FunctionValue<'ctx>> //Keeps track of returned variable
 }
@@ -117,10 +118,10 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
    }
 
     /// Compiles the specified `Function` into an LLVM `FunctionValue`.
-    fn compile_fn(&mut self) -> Result<AnyValueEnum<'ctx>, &'static str> {
-        match self.expr {
-            ASTNode::FunctionNode(functionVar) => {
-                let proto = &functionVar.Proto;
+    fn compile_fn(&mut self, cur_expr: &ASTNode) -> Result<AnyValueEnum<'ctx>, &'static str> {
+        match cur_expr {
+            ASTNode::FunctionNode(function_var) => {
+                let proto = &function_var.Proto;
         let function = self.compile_prototype(proto)?;
 
         let entry = self.context.append_basic_block(function, "entry");
@@ -143,13 +144,13 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
         }
 
         // compile body
-        let body = self.compile_expr(&functionVar.Body)?;
+        let body = self.compile_expr(&function_var.Body)?;
 
         self.builder.build_return(Some(&body));
 
         // return the whole thing after verification and optimization
         if function.verify(true) {
-            //self.fpm.run_on(&function);
+            self.firstPassManager.run_on(&function);
 
             Ok(AnyValueEnum::FunctionValue(function))
         } else {
@@ -164,20 +165,34 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
         ASTNode::ExternNode(proto) => {
             let function = self.compile_prototype(proto)?;
 
-            if(!Some(function).is_none()){
+            if !Some(function).is_none() {
                 return Ok(AnyValueEnum::FunctionValue(function))
             }
             Err("Could not compile external function")
         },
         ASTNode::ExpressionNode(expr) => {
+            let mut funcName = "__anon_expr__".to_owned();
+            let id = Uuid::new_v4().to_string().to_owned();
+            funcName.push_str(id.to_string().as_str());
 
-            let exprOut = self.compile_expr(expr);
-            if(exprOut.is_ok()){
-                return Ok(AnyValueEnum::FloatValue(exprOut.unwrap()));
+            let tempAST = ASTNode::FunctionNode(FuncAST{
+                Proto: ProtoAST { Name: funcName.to_owned(), Args: Vec::new() },
+                Body: expr.to_owned()
+            });
+            let expr_out = self.compile_fn(&tempAST);
+            if expr_out.is_ok() {
+                self.excutionEngine.add_module(self.module);
+                unsafe{
+                    let test_fn = self.excutionEngine.get_function::<unsafe extern "C" fn() -> f64>(funcName.as_str()).unwrap();
+                    let return_value = test_fn.call();
+                    println!("Evaluated to {:?}", return_value);
+                    self.excutionEngine.remove_module(self.module);
+                }
+                return expr_out;
             }
             Err("Could not compile expression")
         }
-        _ => Err("Invalid Function")
+        // _ => Err("Invalid Function")
         }
     }
 
@@ -186,18 +201,22 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
         context: &'ctx Context,
         builder: &'a Builder<'ctx>,
         module: &'a Module<'ctx>,
-        expr: &ASTNode,
+        firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
+        excutionEngine: &'a ExecutionEngine<'ctx>,
+        expr: &ASTNode
     ) -> Result<AnyValueEnum<'ctx>, &'static str> {
         let mut compiler = Compiler {
             context,
             builder,
             module,
             expr,
+            firstPassManager,
+            excutionEngine,
             fn_value_opt: None,
             variables: HashMap::new(),
         };
 
-        compiler.compile_fn()
+        compiler.compile_fn(expr)
     }
 
 }
