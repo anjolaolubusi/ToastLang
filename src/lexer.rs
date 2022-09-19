@@ -7,12 +7,22 @@ pub enum Token {
     Def,
     #[token("extern")]
     Extern,
+    #[token("if")]
+    If,
+    #[token("then")]
+    Then,
+    #[token("else")]
+    Else,    
+    #[token("for")]
+    For,    
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]
     ClosingParenthesis,
     #[token(",")]
     Comma,
+    #[token("->")]
+    ForLoopTo,
     #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
     #[regex(r"(-)?[0-9]*(\.[0-9]+)?")]
@@ -29,6 +39,10 @@ pub enum Token {
     Modulus,
     #[token("=")]
     Equals,
+    #[token("<")]
+    LessThan,
+    #[token(">")]
+    GreaterThan,
     #[regex(r"[ ]+|(\n|\r|\r\n)")]
     WhiteSpace,
     #[regex(r"([\\])[\\][\w]+|([\\][\*])[\w|\n|\r|\r\n]+[\*][\\]")]

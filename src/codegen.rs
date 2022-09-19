@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::{lexer::{Token}, parser::{ProtoAST, FuncAST}};
-use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
+use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, BasicValueEnum}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
 use inkwell::builder::Builder;
 use crate::parser::{ASTNode, ExprAST};
 use uuid::Uuid;
@@ -48,7 +48,6 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
    fn compile_expr(&mut self, expr: &ExprAST) -> Result<FloatValue<'ctx>, &'static str> {
        match *expr {
            ExprAST::NumberExpr(nb) => Ok(self.context.f64_type().const_float(nb)),
-
            ExprAST::VariableExpr(ref name) => match self.variables.get(name.as_str()) {
                Some(var) => Ok(self.builder.build_load(*var, name.as_str()).into_float_value()),
                None => Err("Could not find a matching variable."),
@@ -66,6 +65,14 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                        Token::Minus => Ok(self.builder.build_float_sub(left, right, "tmpsub")),
                        Token::Multiply => Ok(self.builder.build_float_mul(left, right, "tmpmul")),
                        Token::Divide => Ok(self.builder.build_float_div(left, right, "tmpdiv")),
+                       Token::LessThan => {
+                        let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::ULT, left, right, "cmptmp"); 
+                        Ok(self.builder.build_unsigned_int_to_float(cmp, self.context.f64_type(), "tmpbool"))
+                    },
+                        Token::GreaterThan => {
+                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::UGT, left, right, "cmptmp");
+                            Ok(self.builder.build_unsigned_int_to_float(cmp, self.context.f64_type(), "tmpbool"))
+                        },
                        _ => Err("Invalid Binary Operator")
                    }
                },
@@ -87,12 +94,89 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                        .try_as_basic_value()
                        .left()
                    {
-                       Some(value) => Ok(value.into_float_value()),
+                       Some(value) => {
+                        let value2 = value.clone().into_float_value();
+                        Ok(value.into_float_value())},
                        None => Err("Invalid call produced."),
                    }
                },
                None => Err("Unknown function."),
            },
+           ExprAST::IfExpr { ref cond, ref Then, ref Else } => {
+            let parentFunc = self.fn_value();
+            let mut CondCodeGen = self.compile_expr(cond);
+            if(CondCodeGen.is_err()){
+                Err::<FloatValue, &'static str>("Condition failed to compile");
+            }
+            let mut CondCodeGen = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, CondCodeGen.unwrap(), self.context.f64_type().const_float(0.0), "ifcond");
+            
+            
+            let thenBB = self.context.append_basic_block(parentFunc, "then");
+            let elseBB = self.context.append_basic_block(parentFunc, "else");
+            let contBB = self.context.append_basic_block(parentFunc, "ifCont");
+            self.builder.build_conditional_branch(CondCodeGen, thenBB, elseBB);
+            
+            self.builder.position_at_end(thenBB);
+            let thenCodeGen = self.compile_expr(Then);
+            if(thenCodeGen.is_err()){
+                Err::<FloatValue, &'static str>("Could not compile then block");
+            }
+            let thenCodeGen = thenCodeGen.unwrap();
+            self.builder.build_unconditional_branch(contBB);
+            
+            let thenBB = self.builder.get_insert_block().unwrap();
+
+            self.builder.position_at_end(elseBB);
+            let elseCodeGen = self.compile_expr(Else)?;
+            self.builder.build_unconditional_branch(contBB);
+
+            let elseBB = self.builder.get_insert_block().unwrap();
+
+            self.builder.position_at_end(contBB);
+
+            let phi = self.builder.build_phi(self.context.f64_type(), "if tmp");
+            phi.add_incoming(&[(&thenCodeGen, thenBB), (&elseCodeGen, elseBB)]);
+            Ok(phi.as_basic_value().into_float_value())
+       },
+            ExprAST::ForExpr { ref var, ref start, ref end, ref stepFunc, ref body } => {
+                let parent = self.fn_value();
+                let startBlockPointer = self.create_entry_block_alloca(var);
+                let startVal = self.compile_expr(start)?;
+                self.builder.build_store(startBlockPointer, startVal);
+
+                let loopBB = self.context.append_basic_block(parent, "loopBlock");
+                self.builder.build_unconditional_branch(loopBB);
+                self.builder.position_at_end(loopBB);
+
+                let old_val = self.variables.remove(var);
+                self.variables.insert(var.to_owned(), startBlockPointer);
+                
+                let bodyVal = self.compile_expr(body)?;
+                
+                let stepVal = self.compile_expr(stepFunc)?;
+
+                let endVal = self.compile_expr(end)?;
+
+                let currentVal = self.builder.build_load(startBlockPointer, var);
+                let nextVal = self.builder.build_float_add(currentVal.into_float_value(),  stepVal, "nextVar");
+
+                self.builder.build_store(startBlockPointer, nextVal);
+
+                let end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, nextVal, endVal, "iterationCheck");
+                let afterBB = self.context.append_basic_block(parent, "afterloop");
+
+                self.builder.build_conditional_branch(end_cond, loopBB, afterBB);
+                self.builder.position_at_end(afterBB);
+
+                self.variables.remove(var);
+                
+                if let Some(val) = old_val {
+                    self.variables.insert(var.to_string(), val);
+                }
+
+                Ok(self.context.f64_type().const_float(0.0))
+            }
+       _=> Err("Unkown expression")
        }
    }
 
@@ -185,7 +269,6 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                 unsafe{
                     let test_fn = self.excutionEngine.get_function::<unsafe extern "C" fn() -> f64>(funcName.as_str()).unwrap();
                     let return_value = test_fn.call();
-                    println!("Evaluated to {:?}", return_value);
                     self.excutionEngine.remove_module(self.module);
                 }
                 return expr_out;

@@ -1,10 +1,42 @@
 use inkwell::{context::Context, values::{AnyValueEnum, FunctionValue}, builder::Builder, passes::PassManager, OptimizationLevel, execution_engine::ExecutionEngine};
 use crate::codegen::Compiler;
-use std::{io::{self, Read, Write}};
+use std::{io::{self, Read, Write}, env::Args};
 
 mod parser;
 mod lexer;
 mod codegen;
+
+
+pub struct ExternFN {
+    pub Name: String,
+    pub Function: dyn Fn() -> f64
+}
+
+// macro used to print & flush without printing a new line
+macro_rules! print_flush {
+    ( $( $x:expr ),* ) => {
+        print!( $($x, )* );
+
+        std::io::stdout().flush().expect("Could not flush to standard output.");
+    };
+}
+
+#[no_mangle]
+pub extern "C" fn putchard(x: f64) -> f64 {
+    print_flush!("{}", x as u8 as char);
+    x
+}
+
+#[no_mangle]
+pub extern "C" fn printd(x: f64) -> f64 {
+    println!("{}", x);
+    x
+}
+
+// Adding the functions above to a global array,
+// so Rust compiler won't remove them.
+#[used]
+static EXTERNAL_FNS: [extern "C" fn(f64) -> f64; 2] = [putchard, printd];
 
 fn main() {
     let mut buffer = "".to_string();
@@ -19,8 +51,14 @@ fn main() {
     fpm.add_gvn_pass();
     fpm.add_cfg_simplification_pass();
     fpm.initialize();
-    let mut tempId = 0;
+    
+    //TODO: Abstract this out to a class/method
+    let ft = context.f64_type();
+    let extf = module.add_function("printd", ft.fn_type(&[ft.into()], false), None);
+    ee.add_global_mapping(&extf, printd as usize);
+
     loop{
+        print_flush!("?> ");
     io::stdout().write_all(b"> ");
     io::stdin().read_to_string(&mut buffer);
     if buffer.trim() == "exit" {
