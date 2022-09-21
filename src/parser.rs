@@ -12,7 +12,8 @@ pub enum ExprAST {
     BinaryExpr {op: Token, lhs: Box<ExprAST>, rhs: Box<ExprAST>},
     CallExpr {func_name: String, parameters: Vec<ExprAST>},
     IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Box<ExprAST>},
-    ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>}
+    ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
+    InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>}
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -329,6 +330,7 @@ impl<'a> Parser <'a>{
     }
 
     pub fn ParseForExpr(&mut self) -> Option<ExprAST> {
+        let mut inclusiveForLoop = false;
         self.getNewToken(); //Consume for
 
         if(self.current_token.unwrap() != Token::Ident){
@@ -345,10 +347,13 @@ impl<'a> Parser <'a>{
             self.LogErrorASTNode("Something wrong with start value of loop");
         }
         let Start = Start.unwrap();
-        if(self.current_token.unwrap() != Token::ForLoopTo){
+        if(self.current_token.unwrap() != Token::ForLoopTo && self.current_token.unwrap() != Token::InclusiveForLoopTo){
             self.LogErrorExprAST("Need a -> here");
         } 
-        self.getNewToken(); //Eat ->
+        if(self.current_token.unwrap() == Token::InclusiveForLoopTo){
+            inclusiveForLoop = true;
+        }
+        self.getNewToken(); //Eat -> or Eat ->*
         let End = self.ParseExpr();
         if(End.is_none()){
             self.LogErrorASTNode("Something wrong with end value of loop");
@@ -376,8 +381,12 @@ impl<'a> Parser <'a>{
             self.LogErrorExprAST("Expected a end here");
         }
         self.getNewToken(); //Eats end
+        if(inclusiveForLoop){
+            return Some(ExprAST::InclusiveForExpr{ var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) });
+        }
         Some(ExprAST::ForExpr { var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) })
     }
+
 }
 
 mod tests {

@@ -1,15 +1,16 @@
 use inkwell::{context::Context, values::{AnyValueEnum, FunctionValue}, builder::Builder, passes::PassManager, OptimizationLevel, execution_engine::ExecutionEngine};
 use crate::codegen::Compiler;
-use std::{io::{self, Read, Write}, env::Args};
+use std::{io::{self, Read, Write}, env::Args, any::Any};
 
 mod parser;
 mod lexer;
 mod codegen;
 
 
+
 pub struct ExternFN {
     pub Name: String,
-    pub Function: dyn Fn() -> f64
+    pub Function: dyn Fn() -> dyn Any
 }
 
 // macro used to print & flush without printing a new line

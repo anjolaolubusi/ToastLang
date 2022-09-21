@@ -23,6 +23,8 @@ pub enum Token {
     Comma,
     #[token("->")]
     ForLoopTo,
+    #[token("->*")]
+    InclusiveForLoopTo,
     #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
     #[regex(r"(-)?[0-9]*(\.[0-9]+)?")]

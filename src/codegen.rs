@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::{lexer::{Token}, parser::{ProtoAST, FuncAST}};
-use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, BasicValueEnum}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
+use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, BasicValueEnum, IntValue, IntMathValue}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
 use inkwell::builder::Builder;
 use crate::parser::{ASTNode, ExprAST};
 use uuid::Uuid;
@@ -138,7 +138,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             phi.add_incoming(&[(&thenCodeGen, thenBB), (&elseCodeGen, elseBB)]);
             Ok(phi.as_basic_value().into_float_value())
        },
-            ExprAST::ForExpr { ref var, ref start, ref end, ref stepFunc, ref body } => {
+            ExprAST::ForExpr { ref var, ref start, ref end, ref stepFunc, ref body } | ExprAST::InclusiveForExpr  { ref var, ref start, ref end, ref stepFunc, ref body } => {
                 let parent = self.fn_value();
                 let startBlockPointer = self.create_entry_block_alloca(var);
                 let startVal = self.compile_expr(start)?;
@@ -162,7 +162,19 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
 
                 self.builder.build_store(startBlockPointer, nextVal);
 
-                let end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, nextVal, endVal, "iterationCheck");
+                let mut end_cond : IntValue = self.context.i128_type().const_int(0, true);
+                match expr{
+                    ExprAST::ForExpr { var, start, end, stepFunc, body } => {
+                        end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, nextVal, endVal, "iterationCheck");
+                    }
+                    ExprAST::InclusiveForExpr { var, start, end, stepFunc, body } => {
+                        end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, currentVal.into_float_value(), endVal, "iterationCheck");
+                    }
+                    _=> {
+                        Err::<ExprAST, &str>("Just how did you do this?");
+                    }
+                }
+                //let end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, nextVal, endVal, "iterationCheck");
                 let afterBB = self.context.append_basic_block(parent, "afterloop");
 
                 self.builder.build_conditional_branch(end_cond, loopBB, afterBB);
