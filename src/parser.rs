@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(unused_parens)]
 use logos::{Lexer, Logos};
 use crate::lexer::Token;
 use std::collections::HashMap;

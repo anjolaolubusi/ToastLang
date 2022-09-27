@@ -1,6 +1,9 @@
+#![allow(non_snake_case)]
+#![allow(unused_parens)]
+
 use std::collections::HashMap;
 use crate::{lexer::{Token}, parser::{ProtoAST, FuncAST}};
-use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, BasicValueEnum, IntValue, IntMathValue}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine, JitFunction}};
+use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, IntValue}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine}};
 use inkwell::builder::Builder;
 use crate::parser::{ASTNode, ExprAST};
 use uuid::Uuid;
@@ -95,7 +98,6 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                        .left()
                    {
                        Some(value) => {
-                        let value2 = value.clone().into_float_value();
                         Ok(value.into_float_value())},
                        None => Err("Invalid call produced."),
                    }
@@ -104,11 +106,8 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
            },
            ExprAST::IfExpr { ref cond, ref Then, ref Else } => {
             let parentFunc = self.fn_value();
-            let mut CondCodeGen = self.compile_expr(cond);
-            if(CondCodeGen.is_err()){
-                Err::<FloatValue, &'static str>("Condition failed to compile");
-            }
-            let mut CondCodeGen = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, CondCodeGen.unwrap(), self.context.f64_type().const_float(0.0), "ifcond");
+            let CondCodeGen = self.compile_expr(cond)?;
+            let CondCodeGen = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, CondCodeGen, self.context.f64_type().const_float(0.0), "ifcond");
             
             
             let thenBB = self.context.append_basic_block(parentFunc, "then");
@@ -117,11 +116,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             self.builder.build_conditional_branch(CondCodeGen, thenBB, elseBB);
             
             self.builder.position_at_end(thenBB);
-            let thenCodeGen = self.compile_expr(Then);
-            if(thenCodeGen.is_err()){
-                Err::<FloatValue, &'static str>("Could not compile then block");
-            }
-            let thenCodeGen = thenCodeGen.unwrap();
+            let thenCodeGen = self.compile_expr(Then)?;
             self.builder.build_unconditional_branch(contBB);
             
             let thenBB = self.builder.get_insert_block().unwrap();
@@ -151,7 +146,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                 let old_val = self.variables.remove(var);
                 self.variables.insert(var.to_owned(), startBlockPointer);
                 
-                let bodyVal = self.compile_expr(body)?;
+                self.compile_expr(body)?;
                 
                 let stepVal = self.compile_expr(stepFunc)?;
 
@@ -164,10 +159,10 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
 
                 let mut end_cond : IntValue = self.context.i128_type().const_int(0, true);
                 match expr{
-                    ExprAST::ForExpr { var, start, end, stepFunc, body } => {
+                    ExprAST::ForExpr { var: _, start: _, end: _, stepFunc: _, body: _ } => {
                         end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, nextVal, endVal, "iterationCheck");
                     }
-                    ExprAST::InclusiveForExpr { var, start, end, stepFunc, body } => {
+                    ExprAST::InclusiveForExpr { var: _, start: _, end: _, stepFunc: _, body: _ } => {
                         end_cond = self.builder.build_float_compare(inkwell::FloatPredicate::ONE, currentVal.into_float_value(), endVal, "iterationCheck");
                     }
                     _=> {
@@ -280,7 +275,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                 self.excutionEngine.add_module(self.module);
                 unsafe{
                     let test_fn = self.excutionEngine.get_function::<unsafe extern "C" fn() -> f64>(funcName.as_str()).unwrap();
-                    let return_value = test_fn.call();
+                    test_fn.call();
                     self.excutionEngine.remove_module(self.module);
                 }
                 return expr_out;

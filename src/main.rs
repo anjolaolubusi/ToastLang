@@ -1,6 +1,9 @@
-use inkwell::{context::Context, values::{AnyValueEnum, FunctionValue}, builder::Builder, passes::PassManager, OptimizationLevel, execution_engine::ExecutionEngine};
+#![allow(non_snake_case)]
+#![allow(unused_parens)]
+
+use inkwell::{context::Context, values::{AnyValueEnum}, passes::PassManager, OptimizationLevel};
 use crate::codegen::Compiler;
-use std::{io::{self, Read, Write}, env::Args, any::Any};
+use std::{io::{self, Read, Write}, any::Any};
 
 mod parser;
 mod lexer;

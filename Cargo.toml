@@ -9,3 +9,4 @@ edition = "2021"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm12-0"] }
 logos = "0.12.1"
 uuid = { version = "0.8.1", features = ["v4"] }
+rustyline = "10.0.0"
