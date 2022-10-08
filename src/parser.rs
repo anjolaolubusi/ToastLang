@@ -14,7 +14,8 @@ pub enum ExprAST {
     CallExpr {func_name: String, parameters: Vec<ExprAST>},
     IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Box<ExprAST>},
     ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
-    InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>}
+    InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
+    CommentExpr(String)
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -41,7 +42,8 @@ pub struct Parser<'a>{
     pub tokens: Vec<Token>,
     pub current_token: Option<Token>,
     pub lexer: Lexer<'a, Token>,
-    pub BinOpPrecedence: HashMap<String, i64>
+    pub BinOpPrecedence: HashMap<String, i64>,
+    pub TokensToSkip: Vec<Token>
     // Add Operation Precedence
 }
 
@@ -55,11 +57,13 @@ impl<'a> Parser <'a>{
         BinOp.insert("*".to_string(), 40);
         BinOp.insert("/".to_string(), 30);
 
+        let skipToken = [Token::WhiteSpace].to_vec();
         Parser {
             tokens: Vec::<Token>::new()
             ,current_token: Some(Token::WhiteSpace)
             ,lexer: Token::lexer(input)
             ,BinOpPrecedence: BinOp.clone()
+            ,TokensToSkip: skipToken.clone()
         }
     }
 
@@ -81,21 +85,38 @@ impl<'a> Parser <'a>{
     pub fn getNewToken(&mut self){
         loop{
         self.current_token = self.lexer.next();
+        let mut currStr = self.lexer.slice();
+
+        // if self.current_token.unwrap_or(Token::Error) == Token::Comment {
+        //     self.ParseSingleLineComment();
+        //     break;
+        // }
+
+
         //println!("Current Token is: {:?} Current slice is: {}", self.current_token.clone().unwrap_or(Token::WhiteSpace), self.lexer.slice());
-        if self.current_token.is_none() || self.current_token.unwrap() != Token::WhiteSpace {
+        if self.current_token.is_none() || !self.TokensToSkip.contains(&self.current_token.unwrap()) {
             break;
         }
+
         }
     }
 
     pub fn parse(&mut self) -> Option<Vec<ASTNode>> {
         let mut program: Vec<ASTNode> = Vec::new();
         loop {
-            self.getNewToken();
             //println!("{:?}", program);
             if self.current_token.is_none() {
                 break;
             }
+
+            if(self.current_token.unwrap() == Token::WhiteSpace || self.current_token.unwrap() == Token::MultilineCommentEnd || self.current_token.unwrap() == Token::FuncEnd){
+                self.getNewToken();
+            }
+
+            if self.current_token.is_none() {
+                break;
+            }
+
             let result = match self.current_token.unwrap() {
                 Token::Extern => self.ParseExtern(),
                 Token::Def => self.ParseDef(),
@@ -107,6 +128,34 @@ impl<'a> Parser <'a>{
             program.push(result.clone().unwrap());
         }
         return Some(program);
+    }
+
+    pub fn ParseSingleLineComment(&mut self) -> Option<ExprAST> {
+        let mut comment = "".to_string();
+        self.getNewToken(); //Eat '//'
+        loop{
+            if self.current_token.is_none() || (self.current_token.unwrap() == Token::WhiteSpace && self.lexer.slice() == "\n"){
+                break;
+            }
+            comment += self.lexer.slice();
+            self.current_token = self.lexer.next();
+        }
+        let commentExpr = ExprAST::CommentExpr(comment);
+        return Some(commentExpr);
+    }
+
+    pub fn ParseMultiLineComment(&mut self) -> Option<ExprAST>{
+        let mut comment = "".to_string();
+        self.getNewToken(); //Eat '/*'
+        loop{
+            if self.current_token.is_none() || (self.current_token.unwrap() == Token::MultilineCommentEnd){
+                break;
+            }
+            comment += self.lexer.slice();
+            self.current_token = self.lexer.next();
+        }
+        let commentExpr = ExprAST::CommentExpr(comment);
+        return Some(commentExpr);
     }
 
     pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
@@ -128,7 +177,7 @@ impl<'a> Parser <'a>{
     pub fn ParseDef(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Def
         let prototype = self.ParsePrototype();
-        self.getNewToken(); //Consume ')'
+        //self.getNewToken(); //Consume ')'
         if prototype.is_none() {
             return None;
         }
@@ -136,6 +185,7 @@ impl<'a> Parser <'a>{
             return self.LogErrorASTNode("Expected a ':' here");
         }
         self.getNewToken(); //Consume ':'
+        //TODO: Change body to allow multiple statments
         let body = self.ParseExpr();
         if body.is_none() {
             return None;
@@ -176,6 +226,7 @@ impl<'a> Parser <'a>{
         if self.current_token.unwrap() != Token::ClosingParenthesis {
             return self.LogErrorProtoAST("Expected a ')' here");
         }
+        self.getNewToken(); //Consume ')'
         let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone() };
         return Some(proto)
         
@@ -202,6 +253,8 @@ impl<'a> Parser <'a>{
             },
             Token::If => self.ParseIfElseExpr(),
             Token::For => self.ParseForExpr(),
+            Token::Comment => self.ParseSingleLineComment(),
+            Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             _ => {return self.LogErrorExprAST("Unkown Token");}
         }
     }
@@ -392,7 +445,7 @@ impl<'a> Parser <'a>{
 
 mod tests {
     use crate::parser::Parser;
-
+    use std::fs;
     
     
     #[test]
@@ -440,5 +493,22 @@ mod tests {
         let test = parser.parse();
         println!("{:?}", test);
         assert_eq!(test.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn checkForSingleLineComment(){
+        let source = "/* This is a test */";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 4);
+    }
+
+    #[test]
+    fn parseFile(){
+        let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+        let mut parser = Parser::new(&contents);
+        let parsedFile = parser.parse();
+        println!("{:?}", parsedFile);
     }
 }

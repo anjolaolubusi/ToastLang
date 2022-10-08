@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 
-use inkwell::{context::Context, values::{AnyValueEnum}, passes::PassManager, OptimizationLevel};
-use crate::codegen::Compiler;
-use std::{io::{self, Read, Write}, any::Any};
+use inkwell::{context::Context, values::{AnyValueEnum}, passes::PassManager, OptimizationLevel, builder::Builder, execution_engine::ExecutionEngine};
+use crate::{codegen::Compiler, parser::ExprAST};
+use std::{io::{self, Read, Write}, any::Any, env, fs};
 
 mod parser;
 mod lexer;
@@ -42,6 +42,7 @@ pub extern "C" fn printd(x: f64) -> f64 {
 #[used]
 static EXTERNAL_FNS: [extern "C" fn(f64) -> f64; 2] = [putchard, printd];
 
+
 fn main() {
     let mut buffer = "".to_string();
     let context = Context::create();
@@ -61,39 +62,75 @@ fn main() {
     let extf = module.add_function("printd", ft.fn_type(&[ft.into()], false), None);
     ee.add_global_mapping(&extf, printd as usize);
 
-    loop{
-        print_flush!("?> ");
-    io::stdout().write_all(b"> ");
-    io::stdin().read_to_string(&mut buffer);
-    if buffer.trim() == "exit" {
-        break;
-    }
-    let mut parser = parser::Parser::new(&buffer);
-    let test = parser.parse();
-    if !test.is_none() {
-        let parsed_list = test.unwrap();
-        for expr in parsed_list{
-            //let module2 = context.create_module("tmp");
-            match Compiler::compile(&context, &builder, &module, &fpm, &ee, &expr) {
-                Ok(function) => {
-                    println!("-> Expression compiled to IR:");
-                    match function{
-                        AnyValueEnum::FunctionValue(temp) => temp.print_to_stderr(),
-                        AnyValueEnum::FloatValue(temp) => temp.print_to_stderr(),
-                        _ => println!("No print function")
+    let args: Vec<String> = env::args().collect();
+    println!("{:?}", args);
+
+    match args.len() {
+        1 => {
+            loop{
+                print_flush!("?> ");
+            io::stdout().write_all(b"> ");
+            io::stdin().read_to_string(&mut buffer);
+            if buffer.trim() == "exit" {
+                break;
+            }
+            let mut parser = parser::Parser::new(&buffer);
+            let test = parser.parse();
+            if !test.is_none() {
+                let parsed_list = test.unwrap();
+                println!("-> Parsed: {:?}", parsed_list);
+                for expr in parsed_list{
+                    //let module2 = context.create_module("tmp");
+                    match Compiler::compile(&context, &builder, &module, &fpm, &ee, &expr) {
+                        Ok(function) => {
+                            println!("-> Expression compiled to IR:");
+                            match function{
+                                AnyValueEnum::FunctionValue(temp) => temp.print_to_stderr(),
+                                AnyValueEnum::FloatValue(temp) => temp.print_to_stderr(),
+                                _ => println!("No print function")
+                            }
+                        },
+                        Err(err) => {
+                            println!("!> Error compiling function: {}", err);
+                            continue;
+                        }
                     }
-                },
-                Err(err) => {
-                    println!("!> Error compiling function: {}", err);
-                    continue;
                 }
             }
-        }
+        
+        
+            buffer = "".to_string();
+            }
+        },
+        2 => {
+            let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+            let mut parser = parser::Parser::new(&contents);
+            let test = parser.parse();
+            if !test.is_none() {
+                let parsed_list = test.unwrap();
+                println!("-> Parsed: {:?}", parsed_list);
+                for expr in parsed_list{
+                    //let module2 = context.create_module("tmp");
+                    match Compiler::compile(&context, &builder, &module, &fpm, &ee, &expr) {
+                        Ok(function) => {
+                            // println!("-> Expression compiled to IR:");
+                            // match function{
+                            //     AnyValueEnum::FunctionValue(temp) => temp.print_to_stderr(),
+                            //     AnyValueEnum::FloatValue(temp) => temp.print_to_stderr(),
+                            //     _ => println!("No print function")
+                            // }
+                        },
+                        Err(err) => {
+                            println!("!> Error compiling function: {}", err);
+                            continue;
+                        }
+                    }
+                }
+            }
+        },
+        _ => {println!("Too many arguments")}
     }
 
-
-    buffer = "".to_string();
-    }
     //let source = "def foo (a, b): \n a-b \n end \n extern boo(a, b) \n 4 + 5";
 
 }

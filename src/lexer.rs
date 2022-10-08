@@ -47,8 +47,14 @@ pub enum Token {
     GreaterThan,
     #[regex(r"[ ]+|(\n|\r|\r\n)")]
     WhiteSpace,
-    #[regex(r"([\\])[\\][\w]+|([\\][\*])[\w|\n|\r|\r\n]+[\*][\\]")]
+    //#[regex(r"([\\])[\\][\w]+|([\\][\*])[\w|\n|\r|\r\n]+[\*][\\]")]
+    //Comment,
+    #[token(r"//")]
     Comment,
+    #[token(r"/*")]
+    MultilineCommentBegin,
+    #[token(r"*/")]
+    MultilineCommentEnd,
     #[token(":")]
     FuncBegin,
     #[token("end")]
@@ -59,6 +65,7 @@ pub enum Token {
 
 mod tests {
     use super::*;
+    use std::fs;
 
     fn lex_check_word(word: &'static str, correct_token: Token){
         let mut lex = Token::lexer(word);
@@ -120,11 +127,26 @@ mod tests {
     }
 
     #[test]
+    fn lex_comment(){
+        lex_check_word("//", Token::Comment);
+        lex_check_word("/*", Token::MultilineCommentBegin);
+        lex_check_word("*/", Token::MultilineCommentEnd);
+    }
+
+    #[test]
     fn lex_spaces(){
         let spaces = "       ";
         let mut lex = Token::lexer(&spaces);
         assert_eq!(lex.next(), Some(Token::WhiteSpace));
         assert_eq!(lex.slice(), spaces);
+    }
+
+    #[test]
+    fn lex_file(){
+        let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+        let lex = Token::lexer(&contents);
+        let lexedFile: Vec<_> = lex.spanned().collect();
+        println!("{:?}", lexedFile);
     }
 
 

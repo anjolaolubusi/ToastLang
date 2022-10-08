@@ -182,6 +182,9 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                 }
 
                 Ok(self.context.f64_type().const_float(0.0))
+            },
+            ExprAST::CommentExpr(_) => {
+                Ok(self.context.f64_type().const_float(0.0))
             }
        _=> Err("Unkown expression")
        }
