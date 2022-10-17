@@ -98,12 +98,11 @@ fn main() {
                 }
             }
         
-        
             buffer = "".to_string();
             }
         },
         2 => {
-            let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+            let contents = fs::read_to_string(args[1].clone()).expect("Expected file here");
             let mut parser = parser::Parser::new(&contents);
             let test = parser.parse();
             if !test.is_none() {

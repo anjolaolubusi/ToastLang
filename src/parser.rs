@@ -10,18 +10,42 @@ use std::collections::HashMap;
 pub enum ExprAST {
     VariableExpr(String),
     NumberExpr(f64),
-    BinaryExpr {op: Token, lhs: Box<ExprAST>, rhs: Box<ExprAST>},
+    BinaryExpr {op: Token, lhs: Box<ExprAST>, rhs: Box<ExprAST>, opChar: String},
     CallExpr {func_name: String, parameters: Vec<ExprAST>},
     IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Box<ExprAST>},
     ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
     InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
+    UnaryExpr {Opcode: String, Operand: Box<ExprAST>},
     CommentExpr(String)
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct ProtoAST {
     pub Name: String,
-    pub Args: Vec<String>
+    pub Args: Vec<String>,
+    pub IsOperator: bool,
+    pub Precedence: i64
+}
+
+impl ProtoAST{
+    pub fn isUnaryOp(&self) -> bool{
+        return self.IsOperator && self.Args.len() == 1;
+    }
+
+    pub fn isBinaryOp(&self) -> bool{
+        return self.IsOperator && self.Args.len() == 2;
+    }
+
+    pub fn getOperatorName(&self) -> String {
+        let mut operator = self.Name.clone();
+        if(self.isBinaryOp()){
+            operator =  operator.replace("binary", "");
+        }
+        if(self.isUnaryOp()){
+            operator =  operator.replace("unary", "");
+        }
+        return operator;
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -109,7 +133,7 @@ impl<'a> Parser <'a>{
                 break;
             }
 
-            if(self.current_token.unwrap() == Token::WhiteSpace || self.current_token.unwrap() == Token::MultilineCommentEnd || self.current_token.unwrap() == Token::FuncEnd){
+            if(self.current_token.unwrap() == Token::WhiteSpace || self.current_token.unwrap() == Token::MultilineCommentEnd){
                 self.getNewToken();
             }
 
@@ -193,7 +217,7 @@ impl<'a> Parser <'a>{
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogErrorASTNode("Expected a 'end' here");
         }
-        //self.getNewToken(); //Consume End
+        self.getNewToken(); //Consume End
         let funcNode = FuncAST{
             Proto: prototype.unwrap(),
             Body: body.unwrap()
@@ -203,11 +227,44 @@ impl<'a> Parser <'a>{
     }
 
     pub fn ParsePrototype(&mut self) -> Option<ProtoAST>{
-        if self.current_token.is_none() || self.current_token.unwrap() != Token::Ident {
-            return self.LogErrorProtoAST("Expected function name here");
+        let mut Kind: usize = 0;
+        let mut BinaryPrecedence: i64 = 0;
+        let mut prototypeName: String = "".to_string();
+        // if self.current_token.is_none() || self.current_token.unwrap() != Token::Ident  {
+        //     return self.LogErrorProtoAST("Expected function name here");
+        // }
+
+        match self.current_token.unwrap() {
+            Token::Ident => {
+                prototypeName = self.lexer.slice().to_owned();
+                Kind = 0;        
+                self.getNewToken(); //Consume Identifer
+            },
+            Token::Binary => {
+                self.getNewToken(); //Consume Binary
+                prototypeName = "binary".to_string() + self.lexer.slice();
+                Kind = 2;
+                self.getNewToken(); //Consume Operator
+                BinaryPrecedence =  self.lexer.slice().parse::<i64>().unwrap();
+                if(BinaryPrecedence  < 1 || BinaryPrecedence > 100){
+                    return self.LogErrorProtoAST("Invalid precedence must be between 1 and 100 inclusive");
+                }
+                self.getNewToken(); //Consume Binary precedence
+            },
+            Token::Unary => {
+                self.getNewToken(); //Consume Binary
+                let unaryName = self.lexer.slice();
+                if(!unaryName.is_ascii()){
+                    return self.LogErrorProtoAST("Expected unary operator");
+                }
+                prototypeName = "unary".to_string() + unaryName;
+                Kind = 1;
+                self.getNewToken(); //Consume Operator
+
+            }
+            _ => {return self.LogErrorProtoAST("Expected function name here")}
         }
-        let prototypeName = self.lexer.slice().to_owned();
-        self.getNewToken(); //Consume Identifer
+
         if self.current_token.unwrap() != Token::OpeningParenthesis {
             return self.LogErrorProtoAST("Expected a '(' here");
         }
@@ -227,7 +284,13 @@ impl<'a> Parser <'a>{
             return self.LogErrorProtoAST("Expected a ')' here");
         }
         self.getNewToken(); //Consume ')'
-        let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone() };
+        if(newArgs.len() != Kind && Kind != 0){
+            return self.LogErrorProtoAST("Invalid number of operands for operator");
+        }
+        let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone(), IsOperator: Kind != 0, Precedence: BinaryPrecedence };
+        if proto.isBinaryOp() {
+        self.BinOpPrecedence.insert(proto.getOperatorName(), proto.Precedence);
+        }
         return Some(proto)
         
     }
@@ -257,6 +320,20 @@ impl<'a> Parser <'a>{
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             _ => {return self.LogErrorExprAST("Unkown Token");}
         }
+    }
+
+    pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
+        if(!self.lexer.slice().is_ascii() || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
+            return self.ParsePrimaryExpr();
+        }
+
+        let Opc = self.lexer.slice();
+        self.getNewToken();
+        let Operand = self.ParseUnaryExpr();
+        if (Operand.is_some()){
+            return Some(ExprAST::UnaryExpr { Opcode: Opc.to_string(), Operand: Box::new(Operand.unwrap())});
+        }
+        return self.LogErrorExprAST("Can not compile operand");
     }
 
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
@@ -298,7 +375,7 @@ impl<'a> Parser <'a>{
     }
 
     pub fn ParseExpr(&mut self) -> Option<ExprAST>{
-        let LHS_EXPR = self.ParsePrimaryExpr();
+        let LHS_EXPR = self.ParseUnaryExpr();
         if LHS_EXPR.is_none() {
             return None;
         }
@@ -314,10 +391,19 @@ impl<'a> Parser <'a>{
             return LHS;
         }
 
-        let BinOp = self.current_token;
+        let mut BinOp = self.current_token;
+        let charBinOp = self.lexer.slice();
+        
+        if(self.GetTokPrecedence() == -1){
+            //Handle Error
+        }
+
+        if(!"+-/*<>".contains(self.lexer.slice())){
+            BinOp = Some(Token::CustomBinOp);
+        }
         self.getNewToken();
         
-        let mut RHS = self.ParsePrimaryExpr();
+        let mut RHS = self.ParseUnaryExpr();
 
         if RHS.is_none() {
             return None;
@@ -334,7 +420,7 @@ impl<'a> Parser <'a>{
         //Fix
         let LHS_BOX: Box<ExprAST> = Box::new(LHS.unwrap());
         let RHS_BOX: Box<ExprAST> = Box::new(RHS.unwrap());
-        LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX })
+        LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX, opChar: charBinOp.to_string() })
         }
     }
 
@@ -501,7 +587,7 @@ mod tests {
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 4);
+        assert_eq!(test.unwrap().len(), 1);
     }
 
     #[test]
@@ -510,5 +596,24 @@ mod tests {
         let mut parser = Parser::new(&contents);
         let parsedFile = parser.parse();
         println!("{:?}", parsedFile);
+    }
+
+    #[test]
+    fn parseBinaryFunc(){
+        let source = "def binary| 5 (LHS, RHS): \n if LHS then: 1 else: if RHS then: 1 else: 0 end end end \n 2 < 3 | 4 > 2";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        println!("{:?}", test.to_owned().unwrap()[1]);
+        assert_eq!(test.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn parseUnaryFunc(){
+        let source = "def unary!(v): \n if v then: 0 else: 1 end end";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 1);
     }
 }

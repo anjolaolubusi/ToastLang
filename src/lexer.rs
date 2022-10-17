@@ -15,6 +15,10 @@ pub enum Token {
     Else,    
     #[token("for")]
     For,    
+    #[token("binary")]
+    Binary,
+    #[token("unary")]
+    Unary,    
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]
@@ -45,6 +49,7 @@ pub enum Token {
     LessThan,
     #[token(">")]
     GreaterThan,
+    CustomBinOp,
     #[regex(r"[ ]+|(\n|\r|\r\n)")]
     WhiteSpace,
     //#[regex(r"([\\])[\\][\w]+|([\\][\*])[\w|\n|\r|\r\n]+[\*][\\]")]

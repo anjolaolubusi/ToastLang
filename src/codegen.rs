@@ -55,11 +55,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                Some(var) => Ok(self.builder.build_load(*var, name.as_str()).into_float_value()),
                None => Err("Could not find a matching variable."),
            },
-           ExprAST::BinaryExpr {
-               op,
-               ref lhs,
-               ref rhs,
-           } => {
+           ExprAST::BinaryExpr {op, ref lhs, ref rhs, ref opChar} => {
                    let left = self.compile_expr(lhs)?;
                    let right = self.compile_expr(rhs)?;
 
@@ -76,10 +72,46 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                             let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::UGT, left, right, "cmptmp");
                             Ok(self.builder.build_unsigned_int_to_float(cmp, self.context.f64_type(), "tmpbool"))
                         },
+                        Token::CustomBinOp => {
+                            match self.get_function(&("binary".to_string() + opChar)){
+                                Some(binaryFunc) => {
+                                    let mut compiled_args = [left, right].to_vec();
+
+                                    let argsv: Vec<BasicMetadataValueEnum> =
+                                    compiled_args.iter().by_ref().map(|&val| val.into()).collect();
+                                    
+                                    match self
+                                    .builder
+                                    .build_call(binaryFunc, argsv.as_slice(), "tmp")
+                                    .try_as_basic_value()
+                                    .left()
+                                {
+                                    Some(value) => {
+                                     Ok(value.into_float_value())},
+                                    None => Err("Invalid call produced."),
+                                }
+                                },
+                                _ => Err(&("Could not compile binary func"))
+                            } 
+                        },
                        _ => Err("Invalid Binary Operator")
                    }
+                   //let F = self.get_function("binary")
                },
-
+            ExprAST::UnaryExpr { ref Opcode, ref Operand } => {
+                let compiledOper = BasicMetadataValueEnum::FloatValue(self.compile_expr(Operand).expect("Could not compile operand"));
+                let unaryFunc = self.get_function(&("unary".to_string() + Opcode)).expect("Could not get unary function");
+                match self
+                .builder
+                .build_call(unaryFunc, &[compiledOper], "unaryop")
+                .try_as_basic_value()
+                .left(){
+                    Some(value) => {
+                        Ok(value.into_float_value())
+                    }
+                    None => Err("Invalid call produced")
+                }
+            },
            ExprAST::CallExpr { ref func_name, ref parameters } => match self.get_function(func_name.as_str()) {
                Some(fun) => {
                    let mut compiled_args = Vec::with_capacity(parameters.len());
@@ -270,7 +302,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             funcName.push_str(id.to_string().as_str());
 
             let tempAST = ASTNode::FunctionNode(FuncAST{
-                Proto: ProtoAST { Name: funcName.to_owned(), Args: Vec::new() },
+                Proto: ProtoAST { Name: funcName.to_owned(), Args: Vec::new(), IsOperator: false, Precedence: 0 },
                 Body: expr.to_owned()
             });
             let expr_out = self.compile_fn(&tempAST);
