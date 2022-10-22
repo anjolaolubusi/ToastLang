@@ -12,7 +12,9 @@ pub enum Token {
     #[token("then")]
     Then,
     #[token("else")]
-    Else,    
+    Else,   
+    #[token("endif")]
+    EndIf,    
     #[token("for")]
     For,    
     #[token("binary")]

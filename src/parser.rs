@@ -109,15 +109,6 @@ impl<'a> Parser <'a>{
     pub fn getNewToken(&mut self){
         loop{
         self.current_token = self.lexer.next();
-        let mut currStr = self.lexer.slice();
-
-        // if self.current_token.unwrap_or(Token::Error) == Token::Comment {
-        //     self.ParseSingleLineComment();
-        //     break;
-        // }
-
-
-        //println!("Current Token is: {:?} Current slice is: {}", self.current_token.clone().unwrap_or(Token::WhiteSpace), self.lexer.slice());
         if self.current_token.is_none() || !self.TokensToSkip.contains(&self.current_token.unwrap()) {
             break;
         }
@@ -183,44 +174,33 @@ impl<'a> Parser <'a>{
     }
 
     pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
-        let E = self.ParseExpr();
-        if !E.is_none() {
-            return Some(ASTNode::ExpressionNode(E.unwrap()))
-        }
-        self.LogErrorASTNode("Can not parse expression")
+        let E = self.ParseExpr().expect("Can not parse expression");
+            return Some(ASTNode::ExpressionNode(E))
     }
 
     pub fn ParseExtern(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Extern
-        let prototype = self.ParsePrototype();
-        //self.getNewToken(); //Consume ')'
-        let astNode = ASTNode::ExternNode(prototype.unwrap());
+        let prototype = self.ParsePrototype().expect("Could not parse prototype");
+        let astNode = ASTNode::ExternNode(prototype);
         return Some(astNode);
     }
 
     pub fn ParseDef(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Def
-        let prototype = self.ParsePrototype();
-        //self.getNewToken(); //Consume ')'
-        if prototype.is_none() {
-            return None;
-        }
+        let prototype = self.ParsePrototype().expect("Could not parse function prototype");
         if self.current_token.unwrap() != Token::FuncBegin {
             return self.LogErrorASTNode("Expected a ':' here");
         }
         self.getNewToken(); //Consume ':'
         //TODO: Change body to allow multiple statments
-        let body = self.ParseExpr();
-        if body.is_none() {
-            return None;
-        }
+        let body = self.ParseExpr().expect("Could not parse body");
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogErrorASTNode("Expected a 'end' here");
         }
         self.getNewToken(); //Consume End
         let funcNode = FuncAST{
-            Proto: prototype.unwrap(),
-            Body: body.unwrap()
+            Proto: prototype,
+            Body: body
         };
         let astNode = ASTNode::FunctionNode(funcNode);
         return Some(astNode);
@@ -230,9 +210,6 @@ impl<'a> Parser <'a>{
         let mut Kind: usize = 0;
         let mut BinaryPrecedence: i64 = 0;
         let mut prototypeName: String = "".to_string();
-        // if self.current_token.is_none() || self.current_token.unwrap() != Token::Ident  {
-        //     return self.LogErrorProtoAST("Expected function name here");
-        // }
 
         match self.current_token.unwrap() {
             Token::Ident => {
@@ -307,12 +284,12 @@ impl<'a> Parser <'a>{
             },
             Token::OpeningParenthesis => {
                 self.getNewToken(); //Consumes '('
-                let expr = self.ParseExpr();
+                let expr = self.ParseExpr().expect("Could not parse expression within parenthesis");
                 if self.current_token.unwrap() != Token::ClosingParenthesis {
                     return self.LogErrorExprAST("Expected a ')' here");
                 }
                 self.getNewToken(); //Consumes ')'
-                return Some(expr.unwrap());
+                return Some(expr);
             },
             Token::If => self.ParseIfElseExpr(),
             Token::For => self.ParseForExpr(),
@@ -329,11 +306,8 @@ impl<'a> Parser <'a>{
 
         let Opc = self.lexer.slice();
         self.getNewToken();
-        let Operand = self.ParseUnaryExpr();
-        if (Operand.is_some()){
-            return Some(ExprAST::UnaryExpr { Opcode: Opc.to_string(), Operand: Box::new(Operand.unwrap())});
-        }
-        return self.LogErrorExprAST("Can not compile operand");
+        let Operand = self.ParseUnaryExpr().expect("Could not parse Operand");
+        return Some(ExprAST::UnaryExpr { Opcode: Opc.to_string(), Operand: Box::new(Operand)});
     }
 
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
@@ -345,18 +319,15 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //Consume '('
         let mut newArgs: Vec<ExprAST> = Vec::new();
         loop{
-            let parameter = self.ParseExpr();
-            if parameter.is_none() {
-                return None;
-            }
-            newArgs.push(parameter.unwrap());
+            let parameter = self.ParseExpr().expect("Could not parse parameter");
+            newArgs.push(parameter);
             if self.current_token.unwrap() != Token::Comma {
                 break;
             }
             self.getNewToken(); //Consume Comma
         }
         if self.current_token.unwrap() != Token::ClosingParenthesis {
-            //Error
+            return self.LogErrorExprAST("Expected a '(' here");
         }
         self.getNewToken(); //Consume ')'
         return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
@@ -430,40 +401,27 @@ impl<'a> Parser <'a>{
 
     pub fn ParseIfElseExpr(&mut self) -> Option<ExprAST>{
         self.getNewToken(); //eat the if
-        let cond = self.ParseExpr();
-        if(cond.is_none()){
-            self.LogErrorExprAST("Cam not parse condition");
-        }
-        if (self.current_token.is_none() || self.current_token.unwrap() != Token::Then){
-            self.LogErrorExprAST("Expected a then here");
-        }
-        self.getNewToken();
+        let cond = self.ParseExpr().expect("Can not parse condition");
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncBegin){
             self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //eat the :
-        let then = self.ParseExpr();
-        if (then.is_none()){
-            self.LogErrorExprAST("Could not parse then statements");
-        }
+        let then = self.ParseExpr().expect("Could not parse then statements");
         if(self.current_token.unwrap() != Token::Else){
             self.LogErrorExprAST("Expected an else here");
         }
-        self.getNewToken(); //eat the end
+        self.getNewToken(); //eat the 'else'
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncBegin){
             self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //eat the :
-        let Else = self.ParseExpr();
-        if(Else.is_none()){
-            self.LogErrorExprAST("Error parsing else block");
+        let Else = self.ParseExpr().expect("Error parsing else block");
+        if (self.current_token.is_none() || self.current_token.unwrap() != Token::EndIf){
+            self.LogErrorExprAST("Expected a 'endif' here");
         }
-        if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd){
-            self.LogErrorExprAST("Expected a end here");
-        }
-        self.getNewToken(); //eat the end
+        self.getNewToken(); //eat the endif
 
-        Some(ExprAST::IfExpr { cond: Box::new(cond.unwrap()), Then: Box::new(then.unwrap()), Else: Box::new(Else.unwrap()) })
+        Some(ExprAST::IfExpr { cond: Box::new(cond), Then: Box::new(then), Else: Box::new(Else) })
 
         //Add Else Parse
         
@@ -482,11 +440,7 @@ impl<'a> Parser <'a>{
             self.LogErrorExprAST("Need a = here");
         }
         self.getNewToken(); // Eat =
-        let Start = self.ParseExpr();
-        if(Start.is_none()){
-            self.LogErrorASTNode("Something wrong with start value of loop");
-        }
-        let Start = Start.unwrap();
+        let Start = self.ParseExpr().expect("Something wrong with start value of loop");
         if(self.current_token.unwrap() != Token::ForLoopTo && self.current_token.unwrap() != Token::InclusiveForLoopTo){
             self.LogErrorExprAST("Need a -> here");
         } 
@@ -494,29 +448,17 @@ impl<'a> Parser <'a>{
             inclusiveForLoop = true;
         }
         self.getNewToken(); //Eat -> or Eat ->*
-        let End = self.ParseExpr();
-        if(End.is_none()){
-            self.LogErrorASTNode("Something wrong with end value of loop");
-        }
-        let End = End.unwrap();
+        let End = self.ParseExpr().expect("Something wrong with end value of loop");
         if(self.current_token.unwrap() != Token::Comma){
             self.LogErrorExprAST("Need a , here");
         }
         self.getNewToken(); //Eat ,
-        let stepBy = self.ParseExpr();
-        if(stepBy.is_none()){
-            self.LogErrorExprAST("Can't compile step-by value here");
-        }
-        let stepBy = stepBy.unwrap();
+        let stepBy = self.ParseExpr().expect("Can't parse step-by value here");
         if(self.current_token.unwrap() != Token::FuncBegin){
             self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //Eats :
-        let body = self.ParseExpr();
-        if(body.is_none()){
-            self.LogErrorExprAST("Something wrong with parsing body of for loop");
-        }
-        let body = body.unwrap();
+        let body = self.ParseExpr().expect("Something wrong with parsing body of for loop");
         if(self.current_token.unwrap() != Token::FuncEnd){
             self.LogErrorExprAST("Expected a end here");
         }

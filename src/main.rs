@@ -61,6 +61,8 @@ fn main() {
     let ft = context.f64_type();
     let extf = module.add_function("printd", ft.fn_type(&[ft.into()], false), None);
     ee.add_global_mapping(&extf, printd as usize);
+    let extf = module.add_function("putchard", ft.fn_type(&[ft.into()], false), None);
+    ee.add_global_mapping(&extf, putchard as usize);
 
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);

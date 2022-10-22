@@ -3,6 +3,8 @@
 This file is meant to test the Toast lang shell
 */
 extern sin(x)
+extern putchard(x)
+extern printd(x)
 
 def foo(a, b):
     (a+b) + (a*b)
@@ -16,6 +18,11 @@ for i = 1 -> 6, 1:
 printd(i)
 end
 
+if (4 > 5) : 
+putchard(84)
+else:
+putchard(70)
+endif
 
 
 printd(foo(10,30))
