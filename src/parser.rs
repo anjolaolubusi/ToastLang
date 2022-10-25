@@ -6,36 +6,96 @@ use std::collections::HashMap;
 
 
 
+///Expression AST node
 #[derive(PartialEq, Clone, Debug)]
 pub enum ExprAST {
+    ///Represents a variable experssion ast node
     VariableExpr(String),
+    ///Represents a number experssion ast node
     NumberExpr(f64),
-    BinaryExpr {op: Token, lhs: Box<ExprAST>, rhs: Box<ExprAST>, opChar: String},
-    CallExpr {func_name: String, parameters: Vec<ExprAST>},
-    IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Option<Box<ExprAST>>},
-    ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
-    InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
-    UnaryExpr {Opcode: String, Operand: Box<ExprAST>},
+    ///Represents a binary expression ast node
+    BinaryExpr {
+        ///Token for operation
+        op: Token,
+        /// Represents left hand of operation
+        lhs: Box<ExprAST>,
+        /// Represents right hand of operation
+        rhs: Box<ExprAST>,
+        /// Represents the string character of the operation 
+        opChar: String},
+    ///Represents a function call expression ast node
+    CallExpr {
+        /// Name of called function
+        func_name: String,
+        /// Vector of parameters
+        parameters: Vec<ExprAST>},
+    ///Represents a if statment expression ast node
+    IfExpr{
+        /// Condition expression ast node
+        cond: Box<ExprAST>,
+        /// Expression ast node for statments if the condition is true
+        Then: Box<ExprAST>,
+        /// Represents optional else statement
+        Else: Option<Box<ExprAST>>},
+    ///Represents a for loop statment
+    ForExpr{
+        ///Name of iterator variable
+        var: String, 
+        //Starting value
+        start: Box<ExprAST>,
+        ///Ending value
+        end: Box<ExprAST>,
+        ///Stepping function
+        stepFunc: Box<ExprAST>,
+        ///Body of the for loop
+        body: Box<ExprAST>},
+    /// Represents an inclusive for loop statement 
+    InclusiveForExpr{
+        ///Name of iterator variable
+        var: String,
+        ///Starting value
+        start: Box<ExprAST>,
+        ///Ending value
+        end: Box<ExprAST>,
+        ///Stepping function
+        stepFunc: Box<ExprAST>,
+        ///Body of the for loop
+        body: Box<ExprAST>},
+    ///Represents a unary expression 
+    UnaryExpr {
+        ///Represents character of unary operation
+        Opcode: String,
+        ///Represents operand 
+        Operand: Box<ExprAST>},
+    ///Represents comments
     CommentExpr(String)
 }
 
+///Prototype AST node
 #[derive(PartialEq, Clone, Debug)]
 pub struct ProtoAST {
+    ///Name of prototype
     pub Name: String,
+    ///List of arguments
     pub Args: Vec<String>,
+    ///Boolean determing if the prototype is a operator
     pub IsOperator: bool,
+    ///Binary precedence
     pub Precedence: i64
 }
 
 impl ProtoAST{
+    ///Checks if the prototype is a unary operator
     pub fn isUnaryOp(&self) -> bool{
         return self.IsOperator && self.Args.len() == 1;
     }
 
+    ///Checks if the prototype is a binary operator
     pub fn isBinaryOp(&self) -> bool{
         return self.IsOperator && self.Args.len() == 2;
     }
-
+    
+    ///Returns the name of the operator
     pub fn getOperatorName(&self) -> String {
         let mut operator = self.Name.clone();
         if(self.isBinaryOp()){
@@ -48,30 +108,44 @@ impl ProtoAST{
     }
 }
 
+///Represents the function ast node
 #[derive(PartialEq, Clone, Debug)]
 pub struct FuncAST {
+    ///Prototype AST node
     pub Proto: ProtoAST,
+    ///Represents body of function
     pub Body: ExprAST
 }
 
+///Represents an AST Node
 #[derive(PartialEq, Clone, Debug)]
 pub enum ASTNode {
+    ///Node for external functions
     ExternNode(ProtoAST),
+    ///Node for functions
     FunctionNode(FuncAST),
+    ///Node for expressions
     ExpressionNode(ExprAST)
 }
 
+///Parser object
 #[derive(Clone, Debug)]
 pub struct Parser<'a>{
+    ///List of tokens
     pub tokens: Vec<Token>,
+    ///Currently parsed token
     pub current_token: Option<Token>,
+    ///Lexer 
     pub lexer: Lexer<'a, Token>,
+    ///Hashmap of binary operator precedence
     pub BinOpPrecedence: HashMap<String, i64>,
+    ///List of tokens to skip over
     pub TokensToSkip: Vec<Token>
     // Add Operation Precedence
 }
 
 impl<'a> Parser <'a>{
+    /// Instantiate a Parser object 
     pub fn new(input: &'a str) -> Self{
         let mut BinOp = HashMap::new();
         BinOp.insert("<".to_string(), 10);
@@ -90,22 +164,25 @@ impl<'a> Parser <'a>{
             ,TokensToSkip: skipToken.clone()
         }
     }
-
+    /// Logs Error and returns None.
+    /// Used for functions where an AST node is returned
     pub fn LogErrorASTNode(&self, error: &str) -> Option<ASTNode>{
         println!("Error: {}", error);
         return None;
     }
-
+    /// Logs Error and returns None.
+    /// Used for functions where an Expr node is returned
     pub fn LogErrorExprAST(&self, error: &str) -> Option<ExprAST>{
         println!("Error: {}", error);
         return None;
     }
-
+    /// Logs Error and returns None.
+    /// Used for functions where a Proto node is returned
     pub fn LogErrorProtoAST(&self, error: &str) -> Option<ProtoAST>{
         println!("Error: {}", error);
         return None;
     }
-
+    /// Gets the next token
     pub fn getNewToken(&mut self){
         loop{
         self.current_token = self.lexer.next();
@@ -115,7 +192,7 @@ impl<'a> Parser <'a>{
 
         }
     }
-
+    /// Parses given string
     pub fn parse(&mut self) -> Option<Vec<ASTNode>> {
         let mut program: Vec<ASTNode> = Vec::new();
         loop {
@@ -144,7 +221,7 @@ impl<'a> Parser <'a>{
         }
         return Some(program);
     }
-
+    /// Parses a single line comment
     pub fn ParseSingleLineComment(&mut self) -> Option<ExprAST> {
         let mut comment = "".to_string();
         self.getNewToken(); //Eat '//'
@@ -158,7 +235,7 @@ impl<'a> Parser <'a>{
         let commentExpr = ExprAST::CommentExpr(comment);
         return Some(commentExpr);
     }
-
+    /// Parses a multi line comment
     pub fn ParseMultiLineComment(&mut self) -> Option<ExprAST>{
         let mut comment = "".to_string();
         self.getNewToken(); //Eat '/*'
@@ -172,19 +249,19 @@ impl<'a> Parser <'a>{
         let commentExpr = ExprAST::CommentExpr(comment);
         return Some(commentExpr);
     }
-
+    /// Parses top level expression
     pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
         let E = self.ParseExpr().expect("Can not parse expression");
             return Some(ASTNode::ExpressionNode(E))
     }
-
+    /// Parse extern expression
     pub fn ParseExtern(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Extern
         let prototype = self.ParsePrototype().expect("Could not parse prototype");
         let astNode = ASTNode::ExternNode(prototype);
         return Some(astNode);
     }
-
+    /// Parse function declaration
     pub fn ParseDef(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Def
         let prototype = self.ParsePrototype().expect("Could not parse function prototype");
@@ -205,7 +282,7 @@ impl<'a> Parser <'a>{
         let astNode = ASTNode::FunctionNode(funcNode);
         return Some(astNode);
     }
-
+    /// Parses funciton prototype
     pub fn ParsePrototype(&mut self) -> Option<ProtoAST>{
         let mut Kind: usize = 0;
         let mut BinaryPrecedence: i64 = 0;
@@ -271,7 +348,7 @@ impl<'a> Parser <'a>{
         return Some(proto)
         
     }
-    
+    /// Parses primary expression
     pub fn ParsePrimaryExpr(&mut self) -> Option<ExprAST>{
         match self.current_token.unwrap() {
             Token::Ident => {
@@ -298,7 +375,7 @@ impl<'a> Parser <'a>{
             _ => {return self.LogErrorExprAST("Unkown Token");}
         }
     }
-
+    /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
         if(!self.lexer.slice().is_ascii() || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
             return self.ParsePrimaryExpr();
@@ -309,7 +386,7 @@ impl<'a> Parser <'a>{
         let Operand = self.ParseUnaryExpr().expect("Could not parse Operand");
         return Some(ExprAST::UnaryExpr { Opcode: Opc.to_string(), Operand: Box::new(Operand)});
     }
-
+    /// Parses identifier
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
         let IdName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Ident
@@ -332,7 +409,7 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //Consume ')'
         return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
     }
-
+    /// Returns binary operation precedence
     pub fn GetTokPrecedence(&mut self)-> i64{
         if !self.lexer.slice().is_ascii() {
             return -1;
@@ -344,7 +421,7 @@ impl<'a> Parser <'a>{
         }
         return TokPrec;
     }
-
+    /// Parses expression
     pub fn ParseExpr(&mut self) -> Option<ExprAST>{
         let LHS_EXPR = self.ParseUnaryExpr();
         if LHS_EXPR.is_none() {
@@ -353,7 +430,7 @@ impl<'a> Parser <'a>{
         //self.getNewToken(); //Eat LHS
         return self.ParseBinOpRHS(0, LHS_EXPR);
     }
-
+    /// Parse right hand side of expression
     pub fn ParseBinOpRHS(&mut self, ExprPrec: i64, mut LHS: Option<ExprAST>) -> Option<ExprAST>{
         loop{
         let TokPrec = self.GetTokPrecedence();
@@ -398,7 +475,7 @@ impl<'a> Parser <'a>{
     pub fn UpdateSourceString(&mut self, newSource: &'a String){
         self.lexer = Token::lexer(&newSource);
     }
-
+    /// Parse if expression
     pub fn ParseIfElseExpr(&mut self) -> Option<ExprAST>{
         self.getNewToken(); //eat the if
         let cond = self.ParseExpr().expect("Can not parse condition");
@@ -430,7 +507,7 @@ impl<'a> Parser <'a>{
         //Add Else Parse
         
     }
-
+    /// Parses for loop expression
     pub fn ParseForExpr(&mut self) -> Option<ExprAST> {
         let mut inclusiveForLoop = false;
         self.getNewToken(); //Consume for

@@ -3,18 +3,25 @@ use logos::Logos;
 
 #[derive(PartialEq, Clone, Copy, Debug, Logos)]
 pub enum Token {
+    ///Token for 'def' keyword
     #[token("def")]
     Def,
+    ///Token for 'extern' keyword
     #[token("extern")]
     Extern,
+    ///Token for 'if' keyword
     #[token("if")]
     If,
+    ///Token for 'then' keyword
     #[token("then")]
     Then,
+    ///Token for 'else' keyword
     #[token("else")]
     Else,   
+    ///Token for 'endif' keyword
     #[token("endif")]
     EndIf,    
+    ///Token for 'for' keyword
     #[token("for")]
     For,    
     #[token("binary")]
@@ -74,6 +81,7 @@ mod tests {
     use super::*;
     use std::fs;
 
+    ///Checks if the lexer returns the correct token
     fn lex_check_word(word: &'static str, correct_token: Token){
         let mut lex = Token::lexer(word);
         assert_eq!(lex.next(), Some(correct_token));

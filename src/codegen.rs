@@ -10,14 +10,20 @@ use uuid::Uuid;
 
 
 pub struct Compiler<'a, 'ctx> {
-    pub context: &'ctx Context, //Stores core LLVM strcutres 
-    pub builder: &'a Builder<'ctx>, //Builds LLVM instructions
-    pub module: &'a Module<'ctx>, //Stores functions and global variables
-    pub expr: &'a ASTNode, // Current ASTNode
+    /// Stores core LLVM strcutres 
+    pub context: &'ctx Context,
+    /// Builds LLVM instructions
+    pub builder: &'a Builder<'ctx>,
+    /// Stores functions and global variables
+    pub module: &'a Module<'ctx>,
+    /// Current ASTNode
+    pub expr: &'a ASTNode,
     pub firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
     pub excutionEngine: &'a ExecutionEngine<'ctx>,
-    variables: HashMap<String, PointerValue<'ctx>>, //Keeps track of variables
-    fn_value_opt: Option<FunctionValue<'ctx>> //Keeps track of returned variable
+    /// Keeps track of variables
+    variables: HashMap<String, PointerValue<'ctx>>,
+    ///Keeps track of returned variable
+    fn_value_opt: Option<FunctionValue<'ctx>>
 }
 
 impl <'a, 'ctx> Compiler<'a, 'ctx> {
