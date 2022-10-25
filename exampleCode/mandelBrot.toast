@@ -1,11 +1,17 @@
 def printdensity(d):
+
 if (d > 8):
     putchard(32) // ' '
-else: if d > 4 then:
+endif 
+
+if (d > 4 ):
 putchard(46) // '.'
-else: if d > 2 then:
+endif
+
+if d > 2 then:
 putchard(43) // '+'
-else:
+endif
+
 putchard(42) // '*'
-end
+
 end

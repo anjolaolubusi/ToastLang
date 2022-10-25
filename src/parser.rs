@@ -12,7 +12,7 @@ pub enum ExprAST {
     NumberExpr(f64),
     BinaryExpr {op: Token, lhs: Box<ExprAST>, rhs: Box<ExprAST>, opChar: String},
     CallExpr {func_name: String, parameters: Vec<ExprAST>},
-    IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Box<ExprAST>},
+    IfExpr{ cond: Box<ExprAST>, Then: Box<ExprAST>, Else: Option<Box<ExprAST>>},
     ForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
     InclusiveForExpr{ var: String, start: Box<ExprAST>, end: Box<ExprAST>, stepFunc: Box<ExprAST>, body: Box<ExprAST>},
     UnaryExpr {Opcode: String, Operand: Box<ExprAST>},
@@ -407,8 +407,12 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //eat the :
         let then = self.ParseExpr().expect("Could not parse then statements");
-        if(self.current_token.unwrap() != Token::Else){
-            self.LogErrorExprAST("Expected an else here");
+        if(self.current_token.unwrap() != Token::Else && self.current_token.unwrap() != Token::EndIf){
+            self.LogErrorExprAST("Expected an 'else' or 'endif' here");
+        }
+        if(self.current_token.unwrap() == Token::EndIf){
+            self.getNewToken();
+            return Some(ExprAST::IfExpr { cond: Box::new(cond), Then: Box::new(then), Else: None });
         }
         self.getNewToken(); //eat the 'else'
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncBegin){
@@ -421,7 +425,7 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //eat the endif
 
-        Some(ExprAST::IfExpr { cond: Box::new(cond), Then: Box::new(then), Else: Box::new(Else) })
+        Some(ExprAST::IfExpr { cond: Box::new(cond), Then: Box::new(then), Else: Some(Box::new(Else)) })
 
         //Add Else Parse
         

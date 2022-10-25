@@ -153,11 +153,16 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             
             let thenBB = self.builder.get_insert_block().unwrap();
 
+            
             self.builder.position_at_end(elseBB);
-            let elseCodeGen = self.compile_expr(Else)?;
+            let mut elseCodeGen = self.context.f64_type().const_float(0.0);
+            if(Else.is_some()){
+            elseCodeGen = self.compile_expr(&Else.clone().unwrap().to_owned()).expect("Could not compile else block");
+            }
             self.builder.build_unconditional_branch(contBB);
 
             let elseBB = self.builder.get_insert_block().unwrap();
+
 
             self.builder.position_at_end(contBB);
 
