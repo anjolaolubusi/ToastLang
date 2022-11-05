@@ -66,7 +66,7 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);
-
+    let mut testComp = Compiler::new(&context, &builder, &module, &fpm, &ee);
     match args.len() {
         1 => {
             loop{
@@ -83,7 +83,7 @@ fn main() {
                 println!("-> Parsed: {:?}", parsed_list);
                 for expr in parsed_list{
                     //let module2 = context.create_module("tmp");
-                    match Compiler::compile(&context, &builder, &module, &fpm, &ee, &expr) {
+                    match testComp.testComp(Some(&expr)){ //Compiler::compile(&context, &builder, &module, &fpm, &ee, Some(&expr)) {
                         Ok(function) => {
                             println!("-> Expression compiled to IR:");
                             match function{
@@ -112,7 +112,7 @@ fn main() {
                 println!("-> Parsed: {:?}", parsed_list);
                 for expr in parsed_list{
                     //let module2 = context.create_module("tmp");
-                    match Compiler::compile(&context, &builder, &module, &fpm, &ee, &expr) {
+                    match Compiler::compile(&context, &builder, &module, &fpm, &ee, Some(&expr)) {
                         Ok(function) => {
                             // println!("-> Expression compiled to IR:");
                             // match function{

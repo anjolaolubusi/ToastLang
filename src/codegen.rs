@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, borrow::Borrow};
 use crate::{lexer::{Token}, parser::{ProtoAST, FuncAST}};
 use inkwell::{context::Context, module::Module, values::{PointerValue, FunctionValue, FloatValue, BasicMetadataValueEnum, AnyValueEnum, IntValue}, types::BasicMetadataTypeEnum, passes::PassManager, execution_engine::{ExecutionEngine}};
 use inkwell::builder::Builder;
@@ -17,7 +17,7 @@ pub struct Compiler<'a, 'ctx> {
     /// Stores functions and global variables
     pub module: &'a Module<'ctx>,
     /// Current ASTNode
-    pub expr: &'a ASTNode,
+    pub expr: Option<&'a ASTNode>,
     pub firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
     pub excutionEngine: &'a ExecutionEngine<'ctx>,
     /// Keeps track of variables
@@ -27,6 +27,29 @@ pub struct Compiler<'a, 'ctx> {
 }
 
 impl <'a, 'ctx> Compiler<'a, 'ctx> {
+    pub fn new(
+        context: &'ctx Context,
+        builder: &'a Builder<'ctx>,
+        module: &'a Module<'ctx>,
+        firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
+        excutionEngine: &'a ExecutionEngine<'ctx>,
+    ) -> Self{
+        let mut compiler = Compiler {
+            context,
+            builder,
+            module,
+            expr: None,
+            firstPassManager,
+            excutionEngine,
+            fn_value_opt: None,
+            variables: HashMap::new(),
+        };
+        return  compiler;
+        
+    }
+
+
+
    /// Gets a defined function given its name.
    #[inline]
    fn get_function(&self, name: &str) -> Option<FunctionValue<'ctx>> {
@@ -58,30 +81,35 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
        match *expr {
            ExprAST::NumberExpr(nb) => Ok(self.context.f64_type().const_float(nb)),
            ExprAST::VariableExpr(ref name) => match self.variables.get(name.as_str()) {
-               Some(var) => Ok(self.builder.build_load(*var, name.as_str()).into_float_value()),
+               Some(var) => {
+                let test = *var;
+                let varPtr = self.builder.build_load(test, name.as_str());
+                let variableValue = varPtr.into_float_value();
+                Ok(variableValue)
+            },
                None => Err("Could not find a matching variable."),
            },
            ExprAST::BinaryExpr {op, ref lhs, ref rhs, ref opChar} => {
-                   let left = self.compile_expr(lhs)?;
-                   let right = self.compile_expr(rhs)?;
+                   let left = self.compile_expr(lhs);
+                   let right = self.compile_expr(rhs);
 
                    match op {
-                       Token::Plus => Ok(self.builder.build_float_add(left, right, "tmpadd")),
-                       Token::Minus => Ok(self.builder.build_float_sub(left, right, "tmpsub")),
-                       Token::Multiply => Ok(self.builder.build_float_mul(left, right, "tmpmul")),
-                       Token::Divide => Ok(self.builder.build_float_div(left, right, "tmpdiv")),
+                       Token::Plus => Ok(self.builder.build_float_add(left?, right?, "tmpadd")),
+                       Token::Minus => Ok(self.builder.build_float_sub(left?, right?, "tmpsub")),
+                       Token::Multiply => Ok(self.builder.build_float_mul(left?, right?, "tmpmul")),
+                       Token::Divide => Ok(self.builder.build_float_div(left?, right?, "tmpdiv")),
                        Token::LessThan => {
-                        let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::ULT, left, right, "cmptmp"); 
+                        let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::ULT, left?, right?, "cmptmp"); 
                         Ok(self.builder.build_unsigned_int_to_float(cmp, self.context.f64_type(), "tmpbool"))
                     },
                         Token::GreaterThan => {
-                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::UGT, left, right, "cmptmp");
+                            let cmp = self.builder.build_float_compare(inkwell::FloatPredicate::UGT, left?, right?, "cmptmp");
                             Ok(self.builder.build_unsigned_int_to_float(cmp, self.context.f64_type(), "tmpbool"))
                         },
                         Token::CustomBinOp => {
                             match self.get_function(&("binary".to_string() + opChar)){
                                 Some(binaryFunc) => {
-                                    let mut compiled_args = [left, right].to_vec();
+                                    let mut compiled_args = [left?, right?].to_vec();
 
                                     let argsv: Vec<BasicMetadataValueEnum> =
                                     compiled_args.iter().by_ref().map(|&val| val.into()).collect();
@@ -100,6 +128,31 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
                                 _ => Err(&("Could not compile binary func"))
                             } 
                         },
+                        Token::Equals => {
+                            let var_name = match *lhs.borrow() {
+                                ExprAST::VariableExpr(ref var_name) => var_name,
+                                _ => {
+                                    return Err("Expected variable as left-hand operator of assignement.");
+                                },
+                            };
+                            let var_val = self.compile_expr(rhs)?;
+                            let var = self.variables.get(var_name.as_str()).ok_or("Undefined variable");
+                            self.builder.build_store(*var?, var_val);
+                            Ok(var_val)
+                        },
+                        Token::VarDeclare => {
+                            let var_name = match *lhs.borrow() {
+                                ExprAST::VariableExpr(ref var_name) => var_name,
+                                _ => {
+                                    return Err("Expected variable as left-hand operator of assignement.");
+                                },
+                            };
+                            let alloca = self.create_entry_block_alloca(&var_name.to_string());
+                            let variabeVal = self.compile_expr(rhs)?;
+                            self.builder.build_store(alloca, variabeVal);
+                            self.variables.insert(var_name.to_string(), alloca);
+                            Ok(variabeVal)
+                        }
                        _ => Err("Invalid Binary Operator")
                    }
                    //let F = self.get_function("binary")
@@ -228,7 +281,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             },
             ExprAST::CommentExpr(_) => {
                 Ok(self.context.f64_type().const_float(0.0))
-            }
+            },
        _=> Err("Unkown expression")
        }
    }
@@ -339,7 +392,7 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
         module: &'a Module<'ctx>,
         firstPassManager: &'a PassManager<FunctionValue<'ctx>>,
         excutionEngine: &'a ExecutionEngine<'ctx>,
-        expr: &ASTNode
+        expr: Option<&ASTNode>,
     ) -> Result<AnyValueEnum<'ctx>, &'static str> {
         let mut compiler = Compiler {
             context,
@@ -352,7 +405,11 @@ impl <'a, 'ctx> Compiler<'a, 'ctx> {
             variables: HashMap::new(),
         };
 
-        compiler.compile_fn(expr)
+        compiler.compile_fn(expr.unwrap())
+    }
+
+    pub fn testComp(&mut self, expr: Option<&ASTNode>) -> Result<AnyValueEnum<'ctx>, &'static str>{
+        self.compile_fn(expr.unwrap())
     }
 
 }

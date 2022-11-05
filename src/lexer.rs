@@ -74,7 +74,9 @@ pub enum Token {
     #[token("end")]
     FuncEnd,
     #[error]
-    Error
+    Error,
+    #[token("let")]
+    VarDeclare
 }
 
 mod tests {
@@ -164,5 +166,9 @@ mod tests {
         println!("{:?}", lexedFile);
     }
 
+    #[test]
+    fn lex_varDeclare(){
+        lex_check_word("let", Token::VarDeclare);
+    }
 
 }

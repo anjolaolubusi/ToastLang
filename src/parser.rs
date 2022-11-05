@@ -154,6 +154,7 @@ impl<'a> Parser <'a>{
         BinOp.insert("-".to_string(), 20);
         BinOp.insert("*".to_string(), 40);
         BinOp.insert("/".to_string(), 30);
+        BinOp.insert("=".to_string(), 10);
 
         let skipToken = [Token::WhiteSpace].to_vec();
         Parser {
@@ -372,6 +373,7 @@ impl<'a> Parser <'a>{
             Token::For => self.ParseForExpr(),
             Token::Comment => self.ParseSingleLineComment(),
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
+            Token::VarDeclare => self.ParseVarDeclar(),
             _ => {return self.LogErrorExprAST("Unkown Token");}
         }
     }
@@ -446,7 +448,7 @@ impl<'a> Parser <'a>{
             //Handle Error
         }
 
-        if(!"+-/*<>".contains(self.lexer.slice())){
+        if(!"+-/*<>=".contains(self.lexer.slice())){
             BinOp = Some(Token::CustomBinOp);
         }
         self.getNewToken();
@@ -550,6 +552,14 @@ impl<'a> Parser <'a>{
         Some(ExprAST::ForExpr { var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) })
     }
 
+    pub fn ParseVarDeclar(&mut self) -> Option<ExprAST>{
+        self.getNewToken(); //consume 'let'
+        let mut newVarExpr = self.ParseExpr()?; //Parses variable declaration
+        if let ExprAST::BinaryExpr { ref mut op, ref lhs, ref rhs, ref opChar } = newVarExpr {
+            *op = Token::VarDeclare;
+        } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
+        Some(newVarExpr)
+    }
 }
 
 mod tests {
@@ -634,6 +644,15 @@ mod tests {
     #[test]
     fn parseUnaryFunc(){
         let source = "def unary!(v): \n if v then: 0 else: 1 end end";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        assert_eq!(test.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn parseVarDeclare(){
+        let source = "let a = 5";
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
