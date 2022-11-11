@@ -1,0 +1,4 @@
+def binary| 5 (LHS, RHS): 
+if LHS then: 1 else: if RHS then: 1 else: 0 end end end
+
+printd(2 > 3 | 2 < 5)
