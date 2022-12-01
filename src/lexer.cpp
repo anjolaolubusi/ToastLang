@@ -1,7 +1,6 @@
 #include "lexer.h"
 //LexedToken stuff
 
-
 std::ostream& operator<<(std::ostream& out, const LexedToken value){
     return out << "Token: " << value.token << " Value: " << value.value;
 }
@@ -36,39 +35,57 @@ stringToTokenMap["*"] = tok_multiply;
 }
 
 // Lexer stuff
-void Lexer::lexLine(const std::string line){
+std::vector<LexedToken> Lexer::lex(){
+    std::vector<LexedToken> lexedTokens;
+    if(fileName.empty()){
+        for(curLine; std::getline(std::cin, curLine);){
+            if(curLine.empty()){
+                break;
+            }
+            lexLine(lexedTokens);
+        }
+    }else{
+        for(curLine; std::getline(fileStream, curLine);){
+            lexLine(lexedTokens);
+        }
+        fileStream.close();        
+    }
+    return lexedTokens;
+}
+
+void Lexer::lexLine(std::vector<LexedToken>& lexedTokens){
     std::string word = "";
     std::string nonAlphaNum = "";
-    lineNumber++;
-    int i = 0;
-    while(i < line.length()){
-        while(isspace(line[i])){
-          word = "";
-          i++;
-        }
-        while(isalnum(line[i]) && i < line.length()){
-            word += line[i];
-            i++;
-        };
-        while( (isdigit(line[i]) || line[i] == '.') && i < line.length()){
-            word += line[i];
-            i++;
-        };
-        if(word.length() > 0){
+        int i = 0;
+        while(i < curLine.length()){
+            while(isspace(curLine[i])){
+              word = "";
+              i++;
+            }
+            while(isalnum(curLine[i]) && i < curLine.length()){
+                word += curLine[i];
+                i++;
+            };
+            while( (isdigit(curLine[i]) || curLine[i] == '.') && i < curLine.length()){
+                word += curLine[i];
+                i++;
+            };
+            if(word.length() > 0){
+                std::cout << "Word: " << word << std::endl;
+                lexedTokens.push_back(getTokenFromString(word));
+                word = "";
+                continue;
+            }
+            while(!isalnum(curLine[i]) && !isspace(curLine[i]) && std::string("-+/*->->*").find(word) != std::string::npos && i < curLine.length()){
+                word += curLine[i];
+                i++;
+            }
             std::cout << "Word: " << word << std::endl;
-            getTokenFromString(word);
+            lexedTokens.push_back(getTokenFromString(word));
             word = "";
             continue;
         }
-        while(!isalnum(line[i]) && !isspace(line[i]) && std::string("-+/*->->*").find(word) != std::string::npos && i < line.length()){
-            word += line[i];
-            i++;
-        }
-        std::cout << "Word: " << word << std::endl;
-        getTokenFromString(word);
-        word = "";
-        continue;
-    }
+
 }
 
 LexedToken Lexer::getTokenFromString(std::string tokenName){
@@ -77,19 +94,16 @@ LexedToken Lexer::getTokenFromString(std::string tokenName){
     try{
         lt.token = stringToTokenMap.at(tokenName);
         std::cout << lt << std::endl;
-        lexedTokens.push_back(lt);
         return lt;
     }catch(const std::out_of_range& oor){
         if (std::regex_match (tokenName, std::regex("([A-Za-z])+([A-Za-z0-9]+)?") )){
             lt.token = Token::tok_ident;
             std::cout << lt << std::endl;
-            lexedTokens.push_back(lt);
             return lt;
         }
         if (std::regex_match (tokenName, std::regex("(-)?[0-9]*(\.[0-9]+)?")) ){
             lt.token = Token::tok_number;
             std::cout << lt << std::endl;
-            lexedTokens.push_back(lt);
             return lt;
         }
         bool isPunt = true;
@@ -102,7 +116,6 @@ LexedToken Lexer::getTokenFromString(std::string tokenName){
         if(isPunt){
             lt.token = Token::tok_customBinOP;
             std::cout << lt << std::endl;
-            lexedTokens.push_back(lt);
             return lt;
         }else{
             lt.token = tok_error;

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <map>
 #include <stdexcept> 
+#include <fstream>
 
 struct LexedToken{
     Token token;
@@ -22,12 +23,18 @@ struct LexedToken{
 
 class Lexer{
     public:
-    std::vector<LexedToken> lexedTokens;
     std::map<std::string, Token> stringToTokenMap;
     int lineNumber = 0;
+    std::string curLine; 
+    std::string fileName;
+    std::ifstream fileStream;
+    bool isLexing = true;
+    
     Lexer();
     LexedToken getTokenFromString(std::string tokenName);
-    void lexLine(const std::string line);
+    std::vector<LexedToken> lex();
+    void lexLine(std::vector<LexedToken>& lexedTokens);
+    bool finishedLex();
     // ~Lexer();
 };
 

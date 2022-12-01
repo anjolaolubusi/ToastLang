@@ -11,6 +11,14 @@
             "program": "${workspaceFolder}/build/ToastLang",
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug with file input",
+            "program": "${workspaceFolder}/build/ToastLang",
+            "args": ["${workspaceFolder}/exampleCode/test2.toast"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
