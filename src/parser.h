@@ -7,21 +7,30 @@
 #include "tokens.h"
 #include "lexer.h"
 #include <memory>
+#include "astNode.h"
 
-struct ExprAST{
-    ExprAST() {}
-    virtual ~ExprAST() {}
-};
-struct VariableExpr;
-struct NumberExpr;
-struct BinaryExpr;
-struct ASTNode{
-    ASTNode() {}
-    virtual ~ASTNode() {}
-};
-struct ProtoAST;
-struct FuncAST;
-struct ExprNode;
+// struct VariableExpr;
+// struct NumberExpr;
+// struct BinaryExpr;
+
+// struct CodeVisitor{
+//     virtual llvm::Value* visit(VariableExpr&) = 0;
+// };
+
+
+// struct ExprAST{
+//     ExprAST() {}
+//     virtual ~ExprAST() {}
+//     virtual llvm::Value* compile(CodeVisitor&) = 0;
+// };
+
+// struct ASTNode{
+//     ASTNode() {}
+//     virtual ~ASTNode() {}
+// };
+// struct ProtoAST;
+// struct FuncAST;
+// struct ExprNode;
 
 class Parser
 {
