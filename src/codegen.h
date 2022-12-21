@@ -25,8 +25,6 @@ struct CodeGenerator: CodeVisitor{
     llvm::ModuleAnalysisManager MAM;
     llvm::ModulePassManager MPM;
 
-    //std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
-
 
     CodeGenerator(){
         TheContext = std::make_unique<llvm::LLVMContext>();
@@ -184,7 +182,6 @@ struct CodeGenerator: CodeVisitor{
         F->eraseFromParent();
         return nullptr;
     }
-
 
 };
 

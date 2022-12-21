@@ -31,7 +31,7 @@ class Lexer{
     bool isLexing = true;
     
     Lexer();
-    LexedToken getTokenFromString(std::string tokenName);
+    void getToken(std::string tokenName, std::vector<LexedToken>& lexedTokens);
     std::vector<LexedToken> lex();
     void lexLine(std::vector<LexedToken>& lexedTokens);
     bool finishedLex();

@@ -1,6 +1,15 @@
 #include "lexer.h"
 //LexedToken stuff
 
+/*
+How the Lexer works:
+1. Get each indiviual lexer string ("def", "foo", ":")
+    a. Start if the first non space character. Peek to the next char. If the next char is of the same time as the fist. Then add it
+2. Figure out the right token
+    a. Using regex and the stringToTokenMap object
+3. Create lexedtoken object for each token
+*/
+
 std::ostream& operator<<(std::ostream& out, const LexedToken value){
     return out << "Token: " << value.token << " Value: " << value.value;
 }
@@ -57,11 +66,12 @@ std::vector<LexedToken> Lexer::lex(){
 void Lexer::lexLine(std::vector<LexedToken>& lexedTokens){
     std::string word = "";
     std::string nonAlphaNum = "";
+    LexedToken lt;
         int i = 0;
-        while(i < curLine.length()){
-            while(isspace(curLine[i])){
-              word = "";
-              i++;
+        while(i < curLine.length()){            
+            while(isspace(curLine[i]) && i < curLine.length()){
+                word = "";
+                i++;
             }
             while(isalnum(curLine[i]) && i < curLine.length()){
                 word += curLine[i];
@@ -73,56 +83,49 @@ void Lexer::lexLine(std::vector<LexedToken>& lexedTokens){
             };
             if(word.length() > 0){
                 std::cout << "Word: " << word << std::endl;
-                lexedTokens.push_back(getTokenFromString(word));
+                getToken(word, lexedTokens);
                 word = "";
                 continue;
             }
-            while(!isalnum(curLine[i]) && !isspace(curLine[i]) && std::string("-+/*->->*").find(word) != std::string::npos && i < curLine.length()){
+            while(!isalnum(curLine[i]) && !isspace(curLine[i]) && std::string("-+/*->").find(word) != std::string::npos && i < curLine.length()){
                 word += curLine[i];
                 i++;
             }
             std::cout << "Word: " << word << std::endl;
-            lexedTokens.push_back(getTokenFromString(word));
+            getToken(word, lexedTokens);
             word = "";
             continue;
         }
 
 }
 
-LexedToken Lexer::getTokenFromString(std::string tokenName){
+void Lexer::getToken(std::string tokenName, std::vector<LexedToken>& lexedTokens){
     LexedToken lt;
     lt.value = tokenName;
-    try{
-        lt.token = stringToTokenMap.at(tokenName);
-        std::cout << lt << std::endl;
-        return lt;
-    }catch(const std::out_of_range& oor){
-        if (std::regex_match (tokenName, std::regex("([A-Za-z])+([A-Za-z0-9]+)?") )){
-            lt.token = Token::tok_ident;
-            std::cout << lt << std::endl;
-            return lt;
-        }
-        if (std::regex_match (tokenName, std::regex("(-)?[0-9]*(\.[0-9]+)?")) ){
-            lt.token = Token::tok_number;
-            std::cout << lt << std::endl;
-            return lt;
-        }
-        bool isPunt = true;
-        for(int i = 0; i < tokenName.length(); i++){
-            if(!ispunct(tokenName[i])){
-                isPunt = false;
-                std::cout << "Error lexing: '" << tokenName << "' at line " << lineNumber << std::endl;
-            }
-        }
-        if(isPunt){
-            lt.token = Token::tok_customBinOP;
-            std::cout << lt << std::endl;
-            return lt;
+    std::smatch regexMatch;
+    if(std::regex_match (tokenName, std::regex("([A-Za-z])+([A-Za-z0-9]+)?"))){
+        if(stringToTokenMap.count(tokenName) == 1){
+            lt.token = stringToTokenMap[lt.value];
         }else{
-            lt.token = tok_error;
-            std::cout << "Error lexing: '" << tokenName << "' at line " << lineNumber << std::endl;
-            return lt;
+            lt.token = tok_ident;
         }
-        
+        lexedTokens.push_back(lt);
     }
+
+    if(std::regex_match (tokenName, std::regex("(-)?[0-9]*(\.[0-9]+)?"))){
+        lt.token = tok_number;
+        lexedTokens.push_back(lt);
+    }
+
+    while(std::regex_search(tokenName, regexMatch, std::regex("(->)|\\W"))){
+        lt.value = regexMatch.str(0);
+        if(stringToTokenMap.count(lt.value) == 1){
+            lt.token = stringToTokenMap[lt.value];
+        }else{
+            lt.token = tok_customBinOP;
+        }
+        lexedTokens.push_back(lt);
+        tokenName = regexMatch.suffix().str();
+    }
+
 }
