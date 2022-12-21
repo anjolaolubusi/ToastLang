@@ -38,6 +38,7 @@ stringToTokenMap["*"] = tok_multiply;
 std::vector<LexedToken> Lexer::lex(){
     std::vector<LexedToken> lexedTokens;
     if(fileName.empty()){
+        fprintf(stdout, "> ");
         for(curLine; std::getline(std::cin, curLine);){
             if(curLine.empty()){
                 break;

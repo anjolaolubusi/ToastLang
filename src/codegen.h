@@ -14,6 +14,7 @@ struct CodeGenerator: CodeVisitor{
     std::unique_ptr<llvm::IRBuilder<>> Builder;
     std::unique_ptr<llvm::Module> TheModule;
     std::map<std::string, llvm::Value*> NamedValues;
+    uint anonCounter = 0;
 
     CodeGenerator(){
         
@@ -126,7 +127,36 @@ struct CodeGenerator: CodeVisitor{
         return nullptr;
     }
 
-    llvm::Function* visit(ExprNode& expr) override{
+    llvm::Function* visit(ExprNode& exprNode) override{
+        anonCounter++;
+        std::vector<llvm::Type*> Doubles(0, llvm::Type::getDoubleTy(*TheContext));
+        std::string anonFuncName = "anonexpr_" + std::to_string(anonCounter);
+        llvm::FunctionType* FT = llvm::FunctionType::get(llvm::Type::getDoubleTy(*TheContext), Doubles, false);
+        llvm::Function* F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, anonFuncName.c_str(), TheModule.get());
+        
+        if(!F){
+            anonCounter--;
+            return nullptr;
+        }
+
+        if(!F->empty()){
+            anonCounter--;
+            return (llvm::Function*) LogErrorV("Fuunction cannot be redefined");
+        }
+
+        llvm::BasicBlock *BB = llvm::BasicBlock::Create(*TheContext, "entry", F);
+        Builder->SetInsertPoint(BB);
+
+        if(llvm::Value* RetVal = exprNode.expr->compile(*this)){
+            Builder->CreateRet(RetVal);
+            if(!llvm::verifyFunction(*F)){
+                fprintf(stdout, "Error when compiling function: \n");
+                F->print(llvm::errs());
+            };
+            return F;
+        }
+        anonCounter--;
+        F->eraseFromParent();
         return nullptr;
     }
 

@@ -28,17 +28,16 @@ int main(int argc, char** argv) {
         return 0;
     }else if(argc == 1){
         std::string line; //Stores entered line
-        while(true){
-        std::cout << "> "; 
+        while(true){ 
         std::vector<LexedToken> lexedLine = lex.lex();
+        if(lexedLine.empty()){
+            continue;
+        }
         parser.parse(lexedLine);
-        for(int i = 0; i < parser.parsedTokens.size(); i++){
-            if(llvm::Function* FnIR = parser.parsedTokens[i]->compile(codeGen)){
+            if(llvm::Function* FnIR = parser.parsedTokens.back()->compile(codeGen)){
                 fprintf(stdout, "Printing LLVM IR Output: \n");
                 FnIR->print(llvm::errs());
-                fprintf(stdout, "\n");
             }
-        }
         }
     } else{
         // Input fle file
