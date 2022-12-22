@@ -77,7 +77,7 @@ struct CallExpr: ExprAST{
     CallExpr(std::string funcName, std::vector<std::unique_ptr<ExprAST>> parameters)
         :funcName(funcName), parameters(std::move(parameters)) {}
     llvm::Value* compile(CodeVisitor& cv) override {
-        return nullptr;
+        return cv.visit(*this);
     }
 };
 

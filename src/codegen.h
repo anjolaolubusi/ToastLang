@@ -9,14 +9,21 @@
 #include "llvm/IR/Verifier.h"
 
 
+
+
 struct CodeGenerator: CodeVisitor{
     std::unique_ptr<llvm::LLVMContext> TheContext;
     std::unique_ptr<llvm::IRBuilder<>> Builder;
     std::unique_ptr<llvm::Module> TheModule;
     std::map<std::string, llvm::Value*> NamedValues;
+    llvm::FunctionPassManager TheFPM;
+
     uint anonCounter = 0;
 
     CodeGenerator(){
+        TheContext = std::make_unique<llvm::LLVMContext>();
+        TheModule = std::make_unique<llvm::Module>("ToastLang", *TheContext);
+        Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
         
     }
 
@@ -153,6 +160,7 @@ struct CodeGenerator: CodeVisitor{
                 fprintf(stdout, "Error when compiling function: \n");
                 F->print(llvm::errs());
             };
+
             return F;
         }
         anonCounter--;

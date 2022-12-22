@@ -20,9 +20,6 @@ int main(int argc, char** argv) {
     Lexer lex;
     Parser parser;
     CodeGenerator codeGen;
-    codeGen.TheContext = std::make_unique<llvm::LLVMContext>();
-    codeGen.TheModule = std::make_unique<llvm::Module>("ToastLang", *codeGen.TheContext);
-    codeGen.Builder = std::make_unique<llvm::IRBuilder<>>(*codeGen.TheContext);
     if(argc > 2){
         printf("Usage: \n ToastLang (Opens the shell) \n ToastLang [file] (Compiles file)");
         return 0;
