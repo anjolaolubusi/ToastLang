@@ -34,6 +34,9 @@ int main(int argc, char** argv) {
             if(llvm::Function* FnIR = parser.parsedTokens.back()->compile(codeGen)){
                 fprintf(stdout, "Printing LLVM IR Output: \n");
                 FnIR->print(llvm::errs());
+                if(parser.parsedTokens.back()->astNodeType == AstNodeTypes::ASTTopLevelExpr){
+                FnIR->eraseFromParent();
+                }
             }
         }
     } else{

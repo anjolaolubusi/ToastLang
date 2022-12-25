@@ -7,24 +7,43 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Verifier.h"
-
-
-
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Passes/PassBuilder.h"
 
 struct CodeGenerator: CodeVisitor{
     std::unique_ptr<llvm::LLVMContext> TheContext;
     std::unique_ptr<llvm::IRBuilder<>> Builder;
     std::unique_ptr<llvm::Module> TheModule;
     std::map<std::string, llvm::Value*> NamedValues;
-    llvm::FunctionPassManager TheFPM;
+    llvm::PassBuilder PB;
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+    llvm::ModulePassManager MPM;
 
-    uint anonCounter = 0;
+    //std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
+
 
     CodeGenerator(){
         TheContext = std::make_unique<llvm::LLVMContext>();
         TheModule = std::make_unique<llvm::Module>("ToastLang", *TheContext);
         Builder = std::make_unique<llvm::IRBuilder<>>(*TheContext);
-        
+        PB.registerModuleAnalyses(MAM);
+        PB.registerCGSCCAnalyses(CGAM);
+        PB.registerFunctionAnalyses(FAM);
+        PB.registerLoopAnalyses(LAM);
+        PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+        MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
+        // TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
+        // TheFPM->add(llvm::createInstructionCombiningPass());
+        // TheFPM->add(llvm::createReassociatePass());
+        // TheFPM->add(llvm::createGVNPass());
+        // TheFPM->add(llvm::createCFGSimplificationPass());
+        // TheFPM->doInitialization();
     }
 
     llvm::Value* LogErrorV(const char *str){
@@ -128,6 +147,8 @@ struct CodeGenerator: CodeVisitor{
         if(llvm::Value* RetVal = funcAST.Body->compile(*this)){
             Builder->CreateRet(RetVal);
             llvm::verifyFunction(*TheFunction);
+            MPM.run(*TheModule, this->MAM);
+            // TheFPM->run(*TheFunction);
             return TheFunction;
         }
         TheFunction->eraseFromParent();
@@ -135,19 +156,16 @@ struct CodeGenerator: CodeVisitor{
     }
 
     llvm::Function* visit(ExprNode& exprNode) override{
-        anonCounter++;
         std::vector<llvm::Type*> Doubles(0, llvm::Type::getDoubleTy(*TheContext));
-        std::string anonFuncName = "anonexpr_" + std::to_string(anonCounter);
+        std::string anonFuncName = "anonexpr_";
         llvm::FunctionType* FT = llvm::FunctionType::get(llvm::Type::getDoubleTy(*TheContext), Doubles, false);
         llvm::Function* F = llvm::Function::Create(FT, llvm::Function::ExternalLinkage, anonFuncName.c_str(), TheModule.get());
         
         if(!F){
-            anonCounter--;
             return nullptr;
         }
 
         if(!F->empty()){
-            anonCounter--;
             return (llvm::Function*) LogErrorV("Fuunction cannot be redefined");
         }
 
@@ -160,10 +178,9 @@ struct CodeGenerator: CodeVisitor{
                 fprintf(stdout, "Error when compiling function: \n");
                 F->print(llvm::errs());
             };
-
+            // TheFPM->run(*F);
             return F;
         }
-        anonCounter--;
         F->eraseFromParent();
         return nullptr;
     }

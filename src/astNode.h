@@ -7,6 +7,12 @@
 #include "lexer.h"
 #include "llvm/IR/Value.h"
 
+enum AstNodeTypes{
+    ASTNodeFunc,
+    ASTTopLevelExpr,
+    ASTProto
+};
+
 //Declaration
 struct CodeVisitor;
 struct ExprAST;
@@ -115,6 +121,7 @@ struct CommentExpr: ExprAST{
 
 struct ASTNode{
     ASTNode() {}
+    AstNodeTypes astNodeType;
     virtual ~ASTNode() {}
     virtual llvm::Function* compile(CodeVisitor&) = 0;
 };
@@ -127,7 +134,9 @@ struct ProtoAST: ASTNode
     int Precedence;
 
     ProtoAST(std::string name, std::vector<std::string> args, bool isOperator, int Precedence)
-        : name(name), args(args), isOperator(isOperator), Precedence(Precedence) {}
+        : name(name), args(args), isOperator(isOperator), Precedence(Precedence) {
+            this->astNodeType = AstNodeTypes::ASTProto;
+        }
     bool isUnaryOP(){
         return isOperator && args.size() == 1;
     }
@@ -156,7 +165,9 @@ struct FuncAST : ASTNode
     std::unique_ptr<ProtoAST> Proto;
     std::unique_ptr<ExprAST> Body;
     FuncAST(std::unique_ptr<ProtoAST> Proto, std::unique_ptr<ExprAST> Body)
-        : Proto(std::move(Proto)), Body(std::move(Body)) {}
+        : Proto(std::move(Proto)), Body(std::move(Body)) {
+            this->astNodeType = AstNodeTypes::ASTNodeFunc;
+        }
     llvm::Function* compile(CodeVisitor& cv) override{
         return cv.visit(*this);
     }
@@ -165,7 +176,9 @@ struct FuncAST : ASTNode
 struct ExprNode : ASTNode{
     std::unique_ptr<ExprAST> expr;
     ExprNode(std::unique_ptr<ExprAST> expr)
-        : expr(std::move(expr)) {}
+        : expr(std::move(expr)) {
+            this->astNodeType = ASTTopLevelExpr;
+        }
     llvm::Function* compile(CodeVisitor& cv) override{
         return cv.visit(*this);
     }

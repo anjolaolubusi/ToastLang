@@ -18,9 +18,10 @@ src/tokens.h src/tokens.cpp
 src/lexer.h src/lexer.cpp 
 src/astNode.h
 src/parser.h src/parser.cpp
+src/codegen.h
 )
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs support core irreader ${LLVM_TARGETS_TO_BUILD})
 
 target_link_libraries(ToastLang ${llvm_libs})
 
