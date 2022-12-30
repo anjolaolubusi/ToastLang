@@ -49,6 +49,7 @@ public:
     std::unique_ptr<ExprAST> ParsePrimaryExpr();
     std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS);
     std::unique_ptr<ExprAST> ParseUnaryExpr();
+    std::unique_ptr<ExprAST> ParseIfElseExpr();
     std::unique_ptr<ExprAST> ParseExpr();
     std::unique_ptr<ASTNode> ParseDef();
     std::unique_ptr<ProtoAST> ParseExtern();

@@ -129,24 +129,28 @@ std::unique_ptr<ProtoAST> Parser::ParsePrototype() {
 }
 
 std::unique_ptr<ExprAST> Parser::ParsePrimaryExpr(){
-    if(currentTokenITR->token == tok_ident){
-        std::unique_ptr<ExprAST> identExpr = ParseIdentExpr();
-        return std::move(identExpr);        
-    }
-
-    if(currentTokenITR->token == tok_number){
-        std::unique_ptr<ExprAST> numExpr = ParseNumberExpr();
-        return std::move(numExpr);
-    }
-
-    if(currentTokenITR->token == tok_openingPara){
+    std::unique_ptr<ExprAST> m_expr = nullptr;
+    switch (currentTokenITR->token)
+    {
+    case tok_ident:
+        m_expr = ParseIdentExpr();
+        return std::move(m_expr);
+    case tok_number:
+        m_expr = ParseNumberExpr();
+        return std::move(m_expr);
+    case tok_openingPara:
         getNextToken(); //Consume '('
-        std::unique_ptr<ExprAST> expr = ParseExpr();
+        m_expr = ParseExpr();
         if (currentTokenITR->token != tok_closingPara){
             return LogError("Expected a ')' here");
         }
         getNextToken(); //Consume ')'
-        return std::move(expr);
+        return std::move(m_expr);
+    case tok_if:
+        m_expr = ParseIfElseExpr();
+        return std::move(m_expr);
+    default:
+        return LogError("Can not parse unkown token");
     }
 
     LogError("Can not parse unkown token");
@@ -154,7 +158,7 @@ std::unique_ptr<ExprAST> Parser::ParsePrimaryExpr(){
 }
 
 std::unique_ptr<ExprAST> Parser::ParseUnaryExpr() {
-    std::vector<Token> TokensToPass = {tok_openingPara, tok_comma, tok_comment, tok_multlineCommentBegin, tok_ident, tok_number};
+    std::vector<Token> TokensToPass = {tok_openingPara, tok_comma, tok_comment, tok_multlineCommentBegin, tok_ident, tok_number, tok_if};
     if(std::find(TokensToPass.begin(), TokensToPass.end(), currentTokenITR->token) != TokensToPass.end()){
         return ParsePrimaryExpr();
     }
@@ -162,6 +166,46 @@ std::unique_ptr<ExprAST> Parser::ParseUnaryExpr() {
     getNextToken(); //Consume operand
     std::unique_ptr<ExprAST> Operand = ParseUnaryExpr();
     return std::make_unique<UnaryExpr>(Opc, std::move(Operand));
+}
+
+std::unique_ptr<ExprAST> Parser::ParseIfElseExpr(){
+    getNextToken(); //consume 'if'
+    std::unique_ptr<ExprAST> cond = ParseExpr();
+    if(cond == nullptr){
+        return LogError("Could not parse condition");
+    }
+    if(currentTokenITR->token != Token::tok_funcBegin){
+        return LogError("Expected a ':' here");
+    }
+    getNextToken(); //consume ':'
+    std::unique_ptr<ExprAST> then = ParseExpr();
+    if(then == nullptr){
+        return LogError("Could not parse condition");
+    }
+    if(currentTokenITR->token == tok_endif){
+        getNextToken(); //consume 'endif'
+        std::unique_ptr<IfExpr> ifEx = std::make_unique<IfExpr>(std::move(cond), std::move(then), std::move(nullptr));
+        return std::move(ifEx);
+    }
+    if(currentTokenITR->token == tok_else){
+        getNextToken(); //consume 'else'
+        if(currentTokenITR->token != tok_funcBegin){
+            return LogError("Expected a ':' here");
+        }
+        getNextToken(); //consume ':'
+        std::unique_ptr<ExprAST> elseExpr = ParseExpr();
+        if(elseExpr == nullptr){
+            return LogError("Error parsing else block");
+        }
+        if(currentTokenITR->token != Token::tok_endif){
+            return LogError("Expected a 'endif' here");
+        }
+        getNextToken();
+        //std::unique_ptr<ExprAST> ifEx = std::make_unique<IfExpr>(std::move(cond), std::move(then), std::move(elseExpr));
+        std::unique_ptr<IfExpr> ifEx = std::make_unique<IfExpr>(std::move(cond), std::move(then), std::move(elseExpr));
+        return std::move(ifEx);
+    }
+    return LogError("Expected an 'else' or and 'endif' here");
 }
 
 std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS){

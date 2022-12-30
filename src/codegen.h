@@ -24,6 +24,7 @@ struct CodeGenerator: CodeVisitor{
     llvm::CGSCCAnalysisManager CGAM;
     llvm::ModuleAnalysisManager MAM;
     llvm::ModulePassManager MPM;
+    llvm::FunctionPassManager FPM;
 
 
     CodeGenerator(){
@@ -36,6 +37,8 @@ struct CodeGenerator: CodeVisitor{
         PB.registerLoopAnalyses(LAM);
         PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
         MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
+        FPM = PB.buildFunctionSimplificationPipeline(llvm::OptimizationLevel::O2, llvm::ThinOrFullLTOPhase::FullLTOPreLink);
+        
         // TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
         // TheFPM->add(llvm::createInstructionCombiningPass());
         // TheFPM->add(llvm::createReassociatePass());
@@ -105,6 +108,48 @@ struct CodeGenerator: CodeVisitor{
         return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
     }
 
+    llvm::Value* visit(IfExpr& ifExpr) override{
+        llvm::Value* CondV = ifExpr.condExpr->compile(*this);
+        if(!CondV){
+            return LogErrorV("Could not compile condition");
+        }
+        CondV = Builder->CreateFCmpONE(CondV, llvm::ConstantFP::get(*TheContext, llvm::APFloat(0.0f)), "ifcond");
+        llvm::Function* TheFunction = Builder->GetInsertBlock()->getParent();
+        llvm::BasicBlock* ThenBB = llvm::BasicBlock::Create(*TheContext, "then", TheFunction);
+        llvm::BasicBlock* ElseBB = llvm::BasicBlock::Create(*TheContext, "else", TheFunction);
+        llvm::BasicBlock* MergeBB = llvm::BasicBlock::Create(*TheContext, "ifcont", TheFunction);
+        Builder->CreateCondBr(CondV, ThenBB, ElseBB);
+        Builder->SetInsertPoint(ThenBB);
+        llvm::Value* ThenV = ifExpr.thenExpr->compile(*this);
+        if(!ThenV){
+            return LogErrorV("Can not compile then block");
+        }
+        Builder->CreateBr(MergeBB);
+        ThenBB = Builder->GetInsertBlock();
+
+        TheFunction->insert(TheFunction->end(), ElseBB);
+        Builder->SetInsertPoint(ElseBB);
+        llvm::Value* ElseV;
+        if(ifExpr.elseExpr == nullptr){
+            ElseV = NumberExpr("0").compile(*this);
+        }else{
+            ElseV = ifExpr.elseExpr->compile(*this);
+        }
+        if(!ElseV){
+            return LogErrorV("Can not compile else block");
+        }
+        Builder->CreateBr(MergeBB);
+        ElseBB = Builder->GetInsertBlock();
+        
+
+        TheFunction->insert(TheFunction->end(), MergeBB);
+        Builder->SetInsertPoint(MergeBB);
+        llvm::PHINode *PN = Builder->CreatePHI(llvm::Type::getFloatTy(*TheContext), 2, "iftmp");
+        PN->addIncoming(ThenV, ThenBB);
+        PN->addIncoming(ElseV, ElseBB);
+        return PN;
+    }
+
     llvm::Function* visit(ProtoAST& protoAST) override{
         std::vector<llvm::Type*> Doubles(protoAST.args.size(), llvm::Type::getDoubleTy(*TheContext));
 
@@ -145,8 +190,10 @@ struct CodeGenerator: CodeVisitor{
         if(llvm::Value* RetVal = funcAST.Body->compile(*this)){
             Builder->CreateRet(RetVal);
             llvm::verifyFunction(*TheFunction);
-            MPM.run(*TheModule, this->MAM);
+            //MPM.run(*TheModule, this->MAM);
+            FPM.run(*TheFunction, FAM);
             // TheFPM->run(*TheFunction);
+            //TheFunction->viewCFGOnly();
             return TheFunction;
         }
         TheFunction->eraseFromParent();
@@ -176,7 +223,10 @@ struct CodeGenerator: CodeVisitor{
                 fprintf(stdout, "Error when compiling function: \n");
                 F->print(llvm::errs());
             };
-            // TheFPM->run(*F);
+            F->viewCFGOnly();
+            FPM.run(*F, FAM);
+            //MPM.run(*TheModule, this->MAM);
+            F->viewCFGOnly();
             return F;
         }
         F->eraseFromParent();

@@ -22,6 +22,7 @@ struct BinaryExpr;
 struct CallExpr;
 struct UnaryExpr;
 struct CommentExpr;
+struct IfExpr;
 
 struct ASTNode;
 struct ProtoAST;
@@ -35,6 +36,7 @@ struct CodeVisitor{
     virtual llvm::Value* visit(VariableExpr&) = 0;
     virtual llvm::Value* visit(BinaryExpr&) = 0;
     virtual llvm::Value* visit(CallExpr&) = 0;
+    virtual llvm::Value* visit(IfExpr&) = 0;
 
     virtual llvm::Function* visit(ProtoAST&) = 0;
     virtual llvm::Function* visit(FuncAST&) = 0;
@@ -87,11 +89,16 @@ struct CallExpr: ExprAST{
     }
 };
 
-// struct IfExpr: ExprAST{
-//     ExprAST condExpr;
-//     ExprAST thenExpr;
-//     ExprAST elseExpr;
-// };
+struct IfExpr: ExprAST{
+    std::unique_ptr<ExprAST> condExpr;
+    std::unique_ptr<ExprAST> thenExpr;
+    std::unique_ptr<ExprAST> elseExpr;
+    IfExpr(std::unique_ptr<ExprAST> condExpr, std::unique_ptr<ExprAST> thenExpr, std::unique_ptr<ExprAST> elseExpr)
+        :condExpr(std::move(condExpr)), thenExpr(std::move(thenExpr)), elseExpr(std::move(elseExpr)) {}
+    llvm::Value* compile(CodeVisitor& cv) override {
+        return cv.visit(*this);
+    }
+};
 
 // struct ForExpr: ExprAST{
 //     std::string var;
