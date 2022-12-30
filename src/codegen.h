@@ -38,24 +38,20 @@ struct CodeGenerator: CodeVisitor{
         PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
         MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
         FPM = PB.buildFunctionSimplificationPipeline(llvm::OptimizationLevel::O2, llvm::ThinOrFullLTOPhase::FullLTOPreLink);
-        
-        // TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(TheModule.get());
-        // TheFPM->add(llvm::createInstructionCombiningPass());
-        // TheFPM->add(llvm::createReassociatePass());
-        // TheFPM->add(llvm::createGVNPass());
-        // TheFPM->add(llvm::createCFGSimplificationPass());
-        // TheFPM->doInitialization();
     }
 
+    //Logs Compile Error
     llvm::Value* LogErrorV(const char *str){
         fprintf(stderr, "Compile Error: %s\n", str);
         return nullptr;
     }
 
+    //Compiles number as float
     llvm::Value* visit(NumberExpr& numExpr) override {
         return llvm::ConstantFP::get(*TheContext, llvm::APFloat(std::stof(numExpr.number)));
     }
 
+    //Grabs variable from memory
     llvm::Value* visit(VariableExpr& varExpr) override {
         llvm::Value* V = NamedValues[varExpr.varName];
         if(!V){
@@ -64,6 +60,7 @@ struct CodeGenerator: CodeVisitor{
         return V;
     }
 
+    //Checks the binary op and write the correct instructions
     llvm::Value* visit(BinaryExpr& binExpr) override{
         llvm::Value* L = binExpr.lhs->compile(*this);
         llvm::Value* R = binExpr.rhs->compile(*this);
@@ -88,6 +85,7 @@ struct CodeGenerator: CodeVisitor{
         }
     }
 
+    //Grab function from memory and calls it
     llvm::Value* visit(CallExpr& callExpr) override{
         llvm::Function* CalleeF = TheModule->getFunction(callExpr.funcName);
         if(!CalleeF){
@@ -108,6 +106,7 @@ struct CodeGenerator: CodeVisitor{
         return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
     }
 
+    //Creates brances between blocks 
     llvm::Value* visit(IfExpr& ifExpr) override{
         llvm::Value* CondV = ifExpr.condExpr->compile(*this);
         if(!CondV){
@@ -150,6 +149,7 @@ struct CodeGenerator: CodeVisitor{
         return PN;
     }
 
+    //Creates function with empty body in memory
     llvm::Function* visit(ProtoAST& protoAST) override{
         std::vector<llvm::Type*> Doubles(protoAST.args.size(), llvm::Type::getDoubleTy(*TheContext));
 
@@ -165,6 +165,7 @@ struct CodeGenerator: CodeVisitor{
 
     }
 
+    //Compiles function
     llvm::Function* visit(FuncAST& funcAST) override{
         llvm::Function* TheFunction = TheModule->getFunction(funcAST.Proto->name);
         if(!TheFunction){
@@ -200,6 +201,7 @@ struct CodeGenerator: CodeVisitor{
         return nullptr;
     }
 
+    //Compiles command as a function with no parameters
     llvm::Function* visit(ExprNode& exprNode) override{
         std::vector<llvm::Type*> Doubles(0, llvm::Type::getDoubleTy(*TheContext));
         std::string anonFuncName = "anonexpr_";
