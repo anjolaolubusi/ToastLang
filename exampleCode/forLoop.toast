@@ -1,0 +1,15 @@
+for (i= 0, i < 10, 3*i):
+    
+end
+
+for (i= 0, i < 10):
+    
+end
+
+for i= 0, i < 10, 1:
+    
+end
+
+for i= 0, i < 10:
+    
+end

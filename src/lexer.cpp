@@ -110,11 +110,13 @@ void Lexer::getToken(std::string tokenName, std::vector<LexedToken>& lexedTokens
             lt.token = tok_ident;
         }
         lexedTokens.push_back(lt);
+        return;
     }
 
     if(std::regex_match (tokenName, std::regex("(-)?[0-9]*(\.[0-9]+)?"))){
         lt.token = tok_number;
         lexedTokens.push_back(lt);
+        return;
     }
 
     while(std::regex_search(tokenName, regexMatch, std::regex("(->)|\\W"))){

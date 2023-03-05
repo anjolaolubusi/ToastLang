@@ -23,6 +23,7 @@ struct CallExpr;
 struct UnaryExpr;
 struct CommentExpr;
 struct IfExpr;
+struct ForExpr;
 
 struct ASTNode;
 struct ProtoAST;
@@ -37,6 +38,7 @@ struct CodeVisitor{
     virtual llvm::Value* visit(BinaryExpr&) = 0;
     virtual llvm::Value* visit(CallExpr&) = 0;
     virtual llvm::Value* visit(IfExpr&) = 0;
+    virtual llvm::Value* visit(ForExpr&) = 0;
 
     virtual llvm::Function* visit(ProtoAST&) = 0;
     virtual llvm::Function* visit(FuncAST&) = 0;
@@ -100,13 +102,19 @@ struct IfExpr: ExprAST{
     }
 };
 
-// struct ForExpr: ExprAST{
-//     std::string var;
-//     ExprAST start;
-//     ExprAST end;
-//     ExprAST stepFunc;
-//     ExprAST body;
-// };
+struct ForExpr: ExprAST{
+    std::string var;
+    std::unique_ptr<ExprAST> start;
+    std::unique_ptr<ExprAST> end;
+    std::unique_ptr<ExprAST> cond;
+    std::unique_ptr<ExprAST> stepFunc;
+    std::unique_ptr<ExprAST> body;
+    ForExpr(std::string var, std::unique_ptr<ExprAST> start, std::unique_ptr<ExprAST> end, std::unique_ptr<ExprAST> cond, std::unique_ptr<ExprAST> stepFunc, std::unique_ptr<ExprAST> body)
+    : var(var), start(std::move(start)), end(std::move(end)), cond(std::move(cond)), stepFunc(std::move(stepFunc)), body(std::move(body)){}
+    llvm::Value* compile(CodeVisitor& cv) override {
+        return cv.visit(*this);
+    }
+};
 
 struct UnaryExpr: ExprAST{
     std::string opCode;

@@ -149,6 +149,9 @@ std::unique_ptr<ExprAST> Parser::ParsePrimaryExpr(){
     case tok_if:
         m_expr = ParseIfElseExpr();
         return std::move(m_expr);
+    case tok_for:
+        m_expr = ParseForExpr();
+        return std::move(m_expr);
     default:
         return LogError("Can not parse unkown token");
     }
@@ -158,7 +161,7 @@ std::unique_ptr<ExprAST> Parser::ParsePrimaryExpr(){
 }
 
 std::unique_ptr<ExprAST> Parser::ParseUnaryExpr() {
-    std::vector<Token> TokensToPass = {tok_openingPara, tok_comma, tok_comment, tok_multlineCommentBegin, tok_ident, tok_number, tok_if};
+    std::vector<Token> TokensToPass = {tok_openingPara, tok_comma, tok_comment, tok_multlineCommentBegin, tok_ident, tok_number, tok_if, tok_for, tok_number};
     if(std::find(TokensToPass.begin(), TokensToPass.end(), currentTokenITR->token) != TokensToPass.end()){
         return ParsePrimaryExpr();
     }
@@ -206,6 +209,56 @@ std::unique_ptr<ExprAST> Parser::ParseIfElseExpr(){
         return std::move(ifEx);
     }
     return LogError("Expected an 'else' or and 'endif' here");
+}
+
+std::unique_ptr<ExprAST> Parser::ParseForExpr(){
+    bool usedPara = false;
+    bool inclusiveLoop = false;
+    std::unique_ptr<ExprAST> start, end, cond, stepFunc, body;
+    std::string varName;
+    getNextToken(); //consume for
+    if(currentTokenITR->token == tok_openingPara){
+        usedPara = true;
+        getNextToken();
+    }
+    if(currentTokenITR->token != tok_ident){
+        return LogError("Expected a variable name here");
+    }
+    varName = currentTokenITR->value;
+    getNextToken();
+    if(currentTokenITR->token != tok_equals){
+        return LogError("Expected a '=' here");
+    }
+    getNextToken();
+    start = ParseExpr();
+    if(currentTokenITR->token != tok_comma){
+        return LogError("Expected a ',' here");
+    }
+    getNextToken();
+    cond = ParseExpr();
+
+    if(currentTokenITR->token == tok_comma){
+        getNextToken();
+        stepFunc = ParseExpr();
+    }
+    if(currentTokenITR->token != tok_closingPara && usedPara){
+        return LogError("Expected a ')' here");
+    }
+    if(currentTokenITR->token == tok_closingPara && usedPara){
+        getNextToken();
+    }
+    if(currentTokenITR->token == tok_funcBegin){
+        getNextToken();
+    }else{
+        return LogError("Expected a ':' here");
+    }
+
+    body = ParseExpr();
+    if(currentTokenITR->token != tok_funcEnd){
+        return LogError("Expected a 'end' here");
+    }
+    getNextToken();
+    return std::make_unique<ForExpr>(varName, std::move(start), std::move(end), std::move(cond), std::move(stepFunc), std::move(body));
 }
 
 std::unique_ptr<ExprAST> Parser::ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS){
