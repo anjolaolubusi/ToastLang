@@ -18,7 +18,7 @@ src/tokens.h src/tokens.cpp
 src/lexer.h src/lexer.cpp 
 src/astNode.h
 src/parser.h src/parser.cpp
-src/codegen.h
+src/codeGen.h src/codeGen.cpp
 )
 
 llvm_map_components_to_libnames(llvm_libs support core irreader ${LLVM_TARGETS_TO_BUILD})

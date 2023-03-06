@@ -26,7 +26,7 @@ std::unique_ptr<ProtoAST> Parser::LogErrorProto(const char* str){
 }
 
  std::unique_ptr<ExprAST> Parser::ParseNumberExpr(){
-  std::unique_ptr<NumberExpr> numExpr = std::make_unique<NumberExpr>(currentTokenITR->value);
+  std::unique_ptr<ExprAST> numExpr = std::make_unique<ExprAST>(currentTokenITR->value, ExprType::NumberExpr);
   this->getNextToken(); //Consume number
   return std::move(numExpr);
  }
@@ -35,7 +35,7 @@ std::unique_ptr<ProtoAST> Parser::LogErrorProto(const char* str){
     std::string IdName = currentTokenITR->value;
     getNextToken(); //Consume Identifer
     if(currentTokenITR->token != tok_openingPara /*|| Add condition to check if end of parse line */){
-        return std::make_unique<VariableExpr>(IdName);
+        return std::make_unique<ExprAST>(currentTokenITR->value, ExprType::VariableExpr);
     }
   this->getNextToken(); //Consumes '('
   std::vector<std::unique_ptr<ExprAST>> newArgs;

@@ -3,32 +3,9 @@
 #include "lexer.h"
 #include "tokens.h"
 #include "parser.h"
+#include "codeGen.h"
 #include <vector>
 #include <string>
-#include "codegen.h"
-#include "llvm/IR/Function.h"
-
-
-#ifdef _WIN32
-#define DLLEXPORT __declspec(dllexport)
-#else
-#define DLLEXPORT
-#endif
-
-/// putchard - putchar that takes a double and returns 0.
-extern "C" DLLEXPORT double putchard(double X) {
-  fputc((char)X, stderr);
-  return 0;
-}
-
-/// printd - printf that takes a double prints it as "%f\n", returning 0.
-extern "C" DLLEXPORT float printTest(float X) {
-  fprintf(stderr, "%f\n", X);
-  fprintf(stdout, "%f\n", X);
-  printf("This is a test \n");
-  return 0;
-}
-
 
 int main(int argc, char** argv) {
     printf("Number of args: %i, Args: ", argc);
@@ -41,7 +18,7 @@ int main(int argc, char** argv) {
     printf("\n");
     Lexer lex;
     Parser parser;
-    CodeGenerator codeGen;
+    CodeGen codeGen;
     if(argc > 2){
         printf("Usage: \n ToastLang (Opens the shell) \n ToastLang [file] (Compiles file)");
         return 0;
@@ -53,13 +30,13 @@ int main(int argc, char** argv) {
             continue;
         }
         parser.parse(lexedLine);
-            if(llvm::Function* FnIR = parser.parsedTokens.back()->compile(codeGen)){
-                fprintf(stdout, "Printing LLVM IR Output: \n");
-                FnIR->print(llvm::errs());
-                if(parser.parsedTokens.back()->astNodeType == AstNodeTypes::ASTTopLevelExpr){
-                FnIR->eraseFromParent();
-                }
-            }
+        if(parser.parsedTokens.back()->astNodeType == AstNodeTypes::ASTTopLevelExpr){
+            ExprNode* test = (ExprNode*)parser.parsedTokens.back().get();
+            openCodeGenFile(&codeGen, "test.bread");
+            compileExpr(test->expr.get(), &codeGen);
+            closeCodeGenFile(&codeGen);
+        }
+
         }
     } else{
         // Input fle file

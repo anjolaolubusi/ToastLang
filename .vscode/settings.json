@@ -89,7 +89,8 @@
         "valarray": "cpp",
         "typeindex": "cpp",
         "stack": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "__verbose_abort": "cpp"
     },
     "cmake.configureOnOpen": true
 }

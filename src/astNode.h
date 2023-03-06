@@ -5,7 +5,6 @@
 #include <vector>
 #include "tokens.h"
 #include "lexer.h"
-#include "llvm/IR/Value.h"
 
 enum AstNodeTypes{
     ASTNodeFunc,
@@ -31,44 +30,18 @@ struct FuncAST;
 struct ExprNode;
 
 
-// Implementation
-struct CodeVisitor{
-    virtual llvm::Value* visit(NumberExpr&) = 0;
-    virtual llvm::Value* visit(VariableExpr&) = 0;
-    virtual llvm::Value* visit(BinaryExpr&) = 0;
-    virtual llvm::Value* visit(CallExpr&) = 0;
-    virtual llvm::Value* visit(IfExpr&) = 0;
-    virtual llvm::Value* visit(ForExpr&) = 0;
-
-    virtual llvm::Function* visit(ProtoAST&) = 0;
-    virtual llvm::Function* visit(FuncAST&) = 0;
-    virtual llvm::Function* visit(ExprNode&) = 0;
-
-};
+typedef enum {
+    VariableExpr,
+    NumberExpr,
+} ExprType;
 
 struct ExprAST{
     ExprAST() {}
+    std::string value;
+    ExprType exprType;
+    ExprAST(std::string value, ExprType exprType): value(value), exprType(exprType) {}
     virtual ~ExprAST() {}
-    virtual llvm::Value* compile(CodeVisitor&) = 0;
 };
-
-struct VariableExpr: ExprAST
-{
-    std::string varName;
-    VariableExpr(std::string varName): varName(varName) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
-};
-
-struct NumberExpr: ExprAST
-{
-    std::string number;
-    NumberExpr(std::string number) : number(number) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
-}; 
 
 struct BinaryExpr: ExprAST{
     Token op;
@@ -76,9 +49,6 @@ struct BinaryExpr: ExprAST{
     std::string opChar;
     BinaryExpr(Token op, std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> rhs, std::string opChar)
         : op(op), lhs(std::move(lhs)), rhs(std::move(rhs)), opChar(opChar) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
 };
 
 struct CallExpr: ExprAST{
@@ -86,9 +56,6 @@ struct CallExpr: ExprAST{
     std::vector<std::unique_ptr<ExprAST>> parameters;
     CallExpr(std::string funcName, std::vector<std::unique_ptr<ExprAST>> parameters)
         :funcName(funcName), parameters(std::move(parameters)) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
 };
 
 struct IfExpr: ExprAST{
@@ -97,9 +64,6 @@ struct IfExpr: ExprAST{
     std::unique_ptr<ExprAST> elseExpr;
     IfExpr(std::unique_ptr<ExprAST> condExpr, std::unique_ptr<ExprAST> thenExpr, std::unique_ptr<ExprAST> elseExpr)
         :condExpr(std::move(condExpr)), thenExpr(std::move(thenExpr)), elseExpr(std::move(elseExpr)) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
 };
 
 struct ForExpr: ExprAST{
@@ -111,9 +75,6 @@ struct ForExpr: ExprAST{
     std::unique_ptr<ExprAST> body;
     ForExpr(std::string var, std::unique_ptr<ExprAST> start, std::unique_ptr<ExprAST> end, std::unique_ptr<ExprAST> cond, std::unique_ptr<ExprAST> stepFunc, std::unique_ptr<ExprAST> body)
     : var(var), start(std::move(start)), end(std::move(end)), cond(std::move(cond)), stepFunc(std::move(stepFunc)), body(std::move(body)){}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return cv.visit(*this);
-    }
 };
 
 struct UnaryExpr: ExprAST{
@@ -121,16 +82,10 @@ struct UnaryExpr: ExprAST{
     std::unique_ptr<ExprAST> operand;
     UnaryExpr(std::string opCode, std::unique_ptr<ExprAST> operand)
         :opCode(opCode), operand(std::move(operand)) {}
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return nullptr;
-    }
 };
 
 struct CommentExpr: ExprAST{
     std::string comment;
-    llvm::Value* compile(CodeVisitor& cv) override {
-        return nullptr;
-    }
 };
 
 
@@ -138,7 +93,6 @@ struct ASTNode{
     ASTNode() {}
     AstNodeTypes astNodeType;
     virtual ~ASTNode() {}
-    virtual llvm::Function* compile(CodeVisitor&) = 0;
 };
 
 struct ProtoAST: ASTNode
@@ -168,9 +122,6 @@ struct ProtoAST: ASTNode
         }
         return operatorName;
     }
-    llvm::Function* compile(CodeVisitor& cv) override{
-        return cv.visit(*this);
-    }
 };
 
 
@@ -183,9 +134,6 @@ struct FuncAST : ASTNode
         : Proto(std::move(Proto)), Body(std::move(Body)) {
             this->astNodeType = AstNodeTypes::ASTNodeFunc;
         }
-    llvm::Function* compile(CodeVisitor& cv) override{
-        return cv.visit(*this);
-    }
 };
 
 struct ExprNode : ASTNode{
@@ -194,9 +142,6 @@ struct ExprNode : ASTNode{
         : expr(std::move(expr)) {
             this->astNodeType = ASTTopLevelExpr;
         }
-    llvm::Function* compile(CodeVisitor& cv) override{
-        return cv.visit(*this);
-    }
 };
 
 
