@@ -22,11 +22,12 @@ typedef enum {
 
 typedef struct{
     FILE* filePointer;
+    bool reg[8];
 } CodeGen;
 
 void openCodeGenFile(CodeGen* codeGen, const char* filePath);
 void closeCodeGenFile(CodeGen* codeGen);
 void writeToCodeGenFile(CodeGen* codeGen, uint16_t instruction);
-void compileExpr(ExprAST* expr, CodeGen* codeGen);
+int compileExpr(ExprAST* expr, CodeGen* codeGen);
 
 #endif

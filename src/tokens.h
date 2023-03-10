@@ -1,9 +1,7 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
-#include <string>
-#include <iostream>
-enum Token{
+typedef enum{
     tok_def,
     tok_extern,
     tok_if,
@@ -35,9 +33,9 @@ enum Token{
     tok_funcEnd,
     tok_error,
     tok_varDeclare,
-};
+} Token;
 
 const char* getTokenString(Token token);
-std::ostream& operator<<(std::ostream& out, const Token value);
+//std::ostream& operator<<(std::ostream& out, const Token value);
 
 #endif

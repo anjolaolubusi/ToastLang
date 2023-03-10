@@ -39,7 +39,7 @@ const char* getTokenString(Token token){
 return s;
 }
 
-std::ostream& operator<<(std::ostream& out, const Token value){
+// std::ostream& operator<<(std::ostream& out, const Token value){
 
-    return out << getTokenString(value);
-}
+//     return out << getTokenString(value);
+// }
