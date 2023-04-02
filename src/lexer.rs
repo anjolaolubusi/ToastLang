@@ -81,73 +81,152 @@ pub enum Token {
 
 mod tests {
     use super::*;
-    use std::fs;
 
-    ///Checks if the lexer returns the correct token
-    fn lex_check_word(word: &'static str, correct_token: Token){
-        let mut lex = Token::lexer(word);
-        assert_eq!(lex.next(), Some(correct_token));
-    }
+    
 
     #[test]
     fn lex_def(){
-        lex_check_word("def", Token::Def);
+        {
+            let correct_token = super::Token::Def;
+            let mut lex = Token::lexer("def");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_extern(){
-        lex_check_word("extern", Token::Extern);
+        {
+            let correct_token = Token::Extern;
+            let mut lex = Token::lexer("extern");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_open_paren(){
-        lex_check_word("(", Token::OpeningParenthesis);
+        {
+            let correct_token = Token::OpeningParenthesis;
+            let mut lex = Token::lexer("(");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_close_paren(){
-        lex_check_word(")", Token::ClosingParenthesis);
+        {
+            let correct_token = Token::ClosingParenthesis;
+            let mut lex = Token::lexer(")");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_equals(){
-        lex_check_word("=", Token::Equals);
+        {
+            let correct_token = Token::Equals;
+            let mut lex = Token::lexer("=");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_commas(){
-        lex_check_word(",", Token::Comma);
+        {
+            let correct_token = Token::Comma;
+            let mut lex = Token::lexer(",");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_ident(){
-        lex_check_word("adjsjuia", Token::Ident);
-        lex_check_word("var", Token::Ident);
-        lex_check_word("jsidiu34", Token::Ident);
+        {
+            let correct_token = Token::Ident;
+            let mut lex = Token::lexer("adjsjuia");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::Ident;
+            let mut lex = Token::lexer("var");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::Ident;
+            let mut lex = Token::lexer("jsidiu34");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_numbers(){
-        lex_check_word("12213", Token:: Number);
-        lex_check_word("38478.23324", Token:: Number);
-        lex_check_word("-7848734", Token:: Number);
-        lex_check_word("-894783847.559", Token:: Number);
+        {
+            let correct_token = Token:: Number;
+            let mut lex = Token::lexer("12213");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token:: Number;
+            let mut lex = Token::lexer("38478.23324");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token:: Number;
+            let mut lex = Token::lexer("-7848734");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token:: Number;
+            let mut lex = Token::lexer("-894783847.559");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_operators(){
-        lex_check_word("+", Token::Plus);
-        lex_check_word("-", Token::Minus);
-        lex_check_word("*", Token::Multiply);
-        lex_check_word("/", Token::Divide);
-        lex_check_word("%", Token:: Modulus);
+        {
+            let correct_token = Token::Plus;
+            let mut lex = Token::lexer("+");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::Minus;
+            let mut lex = Token::lexer("-");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::Multiply;
+            let mut lex = Token::lexer("*");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::Divide;
+            let mut lex = Token::lexer("/");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token:: Modulus;
+            let mut lex = Token::lexer("%");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
     fn lex_comment(){
-        lex_check_word("//", Token::Comment);
-        lex_check_word("/*", Token::MultilineCommentBegin);
-        lex_check_word("*/", Token::MultilineCommentEnd);
+        {
+            let correct_token = Token::Comment;
+            let mut lex = Token::lexer("//");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::MultilineCommentBegin;
+            let mut lex = Token::lexer("/*");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+        {
+            let correct_token = Token::MultilineCommentEnd;
+            let mut lex = Token::lexer("*/");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
     #[test]
@@ -160,15 +239,20 @@ mod tests {
 
     #[test]
     fn lex_file(){
+        use std::fs;
         let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
         let lex = Token::lexer(&contents);
-        let lexedFile: Vec<_> = lex.spanned().collect();
-        println!("{:?}", lexedFile);
+        let lexed_file: Vec<_> = lex.spanned().collect();
+        println!("{:?}", lexed_file);
     }
 
     #[test]
-    fn lex_varDeclare(){
-        lex_check_word("let", Token::VarDeclare);
+    fn lex_var_declare(){
+        {
+            let correct_token = Token::VarDeclare;
+            let mut lex = Token::lexer("let");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
     }
 
 }

@@ -285,9 +285,9 @@ impl<'a> Parser <'a>{
     }
     /// Parses funciton prototype
     pub fn ParsePrototype(&mut self) -> Option<ProtoAST>{
-        let mut Kind: usize = 0;
+        let Kind: usize;
         let mut BinaryPrecedence: i64 = 0;
-        let mut prototypeName: String = "".to_string();
+        let prototypeName: String;
 
         match self.current_token.unwrap() {
             Token::Ident => {
@@ -474,9 +474,6 @@ impl<'a> Parser <'a>{
         }
     }
 
-    pub fn UpdateSourceString(&mut self, newSource: &'a String){
-        self.lexer = Token::lexer(&newSource);
-    }
     /// Parse if expression
     pub fn ParseIfElseExpr(&mut self) -> Option<ExprAST>{
         self.getNewToken(); //eat the if
@@ -555,7 +552,7 @@ impl<'a> Parser <'a>{
     pub fn ParseVarDeclar(&mut self) -> Option<ExprAST>{
         self.getNewToken(); //consume 'let'
         let mut newVarExpr = self.ParseExpr()?; //Parses variable declaration
-        if let ExprAST::BinaryExpr { ref mut op, ref lhs, ref rhs, ref opChar } = newVarExpr {
+        if let ExprAST::BinaryExpr { ref mut op, lhs: _, rhs: _ ,opChar: _ } = newVarExpr {
             *op = Token::VarDeclare;
         } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
         Some(newVarExpr)
@@ -564,7 +561,6 @@ impl<'a> Parser <'a>{
 
 mod tests {
     use crate::parser::Parser;
-    use std::fs;
     
     
     #[test]
@@ -625,6 +621,7 @@ mod tests {
 
     #[test]
     fn parseFile(){
+        use std::fs;
         let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
         let mut parser = Parser::new(&contents);
         let parsedFile = parser.parse();
