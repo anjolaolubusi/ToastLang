@@ -7,17 +7,38 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
-            "program": "${workspaceFolder}/build/ToastLang",
+            "name": "Debug executable 'ToastLang'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ToastLang",
+                    "--package=ToastLang"
+                ],
+                "filter": {
+                    "name": "ToastLang",
+                    "kind": "bin"
+                }
+            },
             "args": [],
             "cwd": "${workspaceFolder}"
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug with file input",
-            "program": "${workspaceFolder}/build/ToastLang",
-            "args": ["${workspaceFolder}/exampleCode/test2.toast"],
+            "name": "Debug unit tests in executable 'ToastLang'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=ToastLang",
+                    "--package=ToastLang"
+                ],
+                "filter": {
+                    "name": "ToastLang",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
             "cwd": "${workspaceFolder}"
         }
     ]
