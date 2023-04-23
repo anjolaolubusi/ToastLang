@@ -1,8 +1,11 @@
 
 use std::{io::{self, Read, Write}, env, fs};
 
+use crate::codegen::ToastVM;
+
 mod parser;
 mod lexer;
+mod codegen;
 
 // macro used to print & flush without printing a new line
 macro_rules! print_flush {
@@ -28,11 +31,17 @@ fn main() {
             }
             let mut parser = parser::Parser::new(&buffer);
             let test = parser.parse();
-            if !test.is_none() {
-                let parsed_list = test.unwrap();
-                println!("-> Parsed: {:?}", parsed_list);
+            // if !test.is_none() {
+            //     let parsed_list = test.unwrap();
+            //     println!("-> Parsed: {:?}", parsed_list);
+            // }
+            // let temp = test.unwrap();
+            let mut cpu: ToastVM = ToastVM::new();
+            for astNode in test.unwrap(){
+                cpu.ConvertNodeToByteCode(astNode);
+                cpu.ConsumeByteCode();
             }
-        
+
             buffer = "".to_string();
             }
         },

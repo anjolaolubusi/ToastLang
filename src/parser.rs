@@ -1,8 +1,9 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 use logos::{Lexer, Logos};
-use crate::lexer::Token;
+use crate::{lexer::Token, codegen};
 use std::collections::HashMap;
+use crate::codegen::OpCodes;
 
 
 
@@ -557,6 +558,7 @@ impl<'a> Parser <'a>{
         } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
         Some(newVarExpr)
     }
+
 }
 
 mod tests {
