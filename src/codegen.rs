@@ -2,6 +2,9 @@
 #![allow(unused_parens)]
 use crate::parser::*;
 use crate::lexer::Token;
+use num;
+use num_derive::{self, FromPrimitive};
+
 pub struct ToastVM{
     /// General Purpose Registers (8 16-bit registers)
     pub gp_reg: [u16; 8],
@@ -13,6 +16,7 @@ pub struct ToastVM{
     pub free_reg: u8
 }
 
+#[derive(FromPrimitive, Debug)]
 pub enum OpCodes{
     OpReturn = 0,
     /// First 4 bits - OpCode
@@ -22,6 +26,7 @@ pub enum OpCodes{
     OpLoad,
     /// First 4 bits - OpCode
     /// Next 3 bits - First Reg
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
     /// Mext 3 bits - Second Reg
     OpAdd
 }
@@ -61,8 +66,23 @@ impl ToastVM{
                 return Some(register);
             },
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
-                let reg1 = self.ConvertExprToByteCode(*lhs);
-                let reg2 = self.ConvertExprToByteCode(*rhs);
+                let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
+                let mut byteCode : u16 = 0;
+                byteCode = byteCode | (OpCodes::OpAdd as u16) << 12 | ( (reg1 as u16) << 9);
+                if let ExprAST::NumberExpr(trueNum) = *rhs {
+                    let immediateMode: u16 = (trueNum < 256.0) as u16;
+                    byteCode = byteCode | (immediateMode << 8);
+                    if(immediateMode == 1 as u16){
+                        byteCode = byteCode | (trueNum as u16);
+                        self.program.push(byteCode);
+                        return None;
+                    }
+                    let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
+                    byteCode = byteCode | (reg2 as u16);
+                    self.program.push(byteCode);
+                    return None;
+                }
+
 
                 return None;
             },
@@ -74,9 +94,9 @@ impl ToastVM{
         let mut byteCode: u16 = 0;
         while self.pc < self.program.len(){
         byteCode = self.program[self.pc];
-        let opCode = byteCode >> 12;
+        let opCode = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         match opCode {
-            OpLoad  => {
+            OpCodes::OpLoad  => {
                 let reg = (byteCode >> 9) & 7;
                 let immediateMode = (byteCode >> 8) & (0x0001);
                 if(immediateMode == 1){
@@ -88,7 +108,17 @@ impl ToastVM{
                 }
 
             },
-            _ => println!("No implementation for opcode: {}", opCode)
+            OpCodes::OpAdd => {
+                let reg1 = (byteCode >> 9) & 7;
+                let immediateMode = (byteCode >> 8) & (0x0001);
+                if(immediateMode == 1){
+                    self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF);
+                }else{
+                    let reg2 = byteCode & 7;
+                    self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];
+                }
+            },
+            _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         self.pc = self.pc + 1;
     }
