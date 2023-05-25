@@ -39,6 +39,7 @@ fn main() {
             let mut cpu: ToastVM = ToastVM::new();
             for astNode in test.unwrap(){
                 cpu.ConvertNodeToByteCode(astNode);
+                cpu.LogByteCodeProgram();
                 cpu.ConsumeByteCode();
             }
 

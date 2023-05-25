@@ -123,4 +123,62 @@ impl ToastVM{
         self.pc = self.pc + 1;
     }
     }
+
+
+    pub fn LogByteCodeProgram(&mut self){
+        let mut byteCode: u16 = 0;
+        let mut i = 0;
+        println!("");
+        println!(
+            "{0: <10} | {1: <10} | {2: <10} | {3: <10}",
+            "ID", "OpCode", "Data", "HexCode"
+        );
+        while i < self.program.len(){
+            byteCode = self.program[i];
+            let opCode: OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
+            match opCode {
+                OpCodes::OpLoad => {
+                    let indexNum = i;
+                    let originalByteCode = byteCode;
+                    let regNum = (byteCode >> 9) & 7;
+                    let immediateMode = (byteCode >> 8) & (0x0001);
+                    let trueNum;
+                    if(immediateMode == 1){
+                        trueNum = ((byteCode) & (0x00FF));
+                    }else{
+                        i = i + 1;
+                        byteCode = self.program[i];
+                        trueNum = byteCode;
+                    }
+                    println!(
+                        "{0: <10} | {opCode:?} | Registor: {reg:?} Immediate Mode: {iMode} Number: {trueNum} | {hexCode:X}",
+                        indexNum, opCode=opCode ,reg=regNum, iMode=immediateMode,trueNum=trueNum, hexCode=originalByteCode)                    
+                },
+                OpCodes::OpAdd => {
+                    let indexNum = i;
+                    let originalByteCode = byteCode;
+                    let reg1 = (byteCode >> 9) & 7;
+                    let immediateMode = (byteCode >> 8) & (0x0001);
+                    let operandNum;
+                    if(immediateMode == 1){
+                        operandNum = ((byteCode) & (0x00FF));
+                        println!(
+                            "{0: <10} | {opCode:?} | Registor: {reg:?} Immediate Mode: {iMode} Operand Number: {trueNum} | {hexCode:X}",
+                            indexNum, opCode=opCode ,reg=reg1, iMode=immediateMode,trueNum=operandNum, hexCode=originalByteCode);
+                    }else{
+                        operandNum = byteCode & 7;
+                        println!(
+                            "{0: <10} | {opCode:?} | Registor 1: {reg:?} Immediate Mode: {iMode} Registor 2: {reg2} | {hexCode:X}",
+                            indexNum, opCode=opCode ,reg=reg1, iMode=immediateMode,reg2=operandNum, hexCode=originalByteCode)
+                    }
+                },
+                _ => {
+                    println!(
+                        "{0: <10} | {1: <10} | {2: <10} | {hexCode:X}",
+                       i,"Unknown","", hexCode=byteCode)
+                }
+            };
+            i = i + 1;
+        }
+    }
 }
