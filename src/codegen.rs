@@ -91,7 +91,7 @@ impl ToastVM{
     }
 
     pub fn ConsumeByteCode(&mut self){
-        let mut byteCode: u16 = 0;
+        let mut byteCode;
         while self.pc < self.program.len(){
         byteCode = self.program[self.pc];
         let opCode = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
@@ -126,7 +126,7 @@ impl ToastVM{
 
 
     pub fn LogByteCodeProgram(&mut self){
-        let mut byteCode: u16 = 0;
+        let mut byteCode;
         let mut i = 0;
         println!("");
         println!(
