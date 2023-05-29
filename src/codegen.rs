@@ -28,7 +28,22 @@ pub enum OpCodes{
     /// Next 3 bits - First Reg
     /// Next bit - 1 if Immediate mode else Multiple byte mode
     /// Mext 3 bits - Second Reg
-    OpAdd
+    OpAdd,
+    /// First 4 bits - OpCode
+    /// Next 3 bits - First Reg
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Mext 3 bits - Second Reg
+    OpSub,
+    /// First 4 bits - OpCode
+    /// Next 3 bits - First Reg
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Mext 3 bits - Second Reg
+    OpMul,
+    /// First 4 bits - OpCode
+    /// Next 3 bits - First Reg
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Mext 3 bits - Second Reg
+    OpDiv,
 }
 
 impl ToastVM{
@@ -68,7 +83,14 @@ impl ToastVM{
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
                 let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
                 let mut byteCode : u16 = 0;
-                byteCode = byteCode | (OpCodes::OpAdd as u16) << 12 | ( (reg1 as u16) << 9);
+                let opCode : u8 = match op {
+                    Token::Plus => OpCodes::OpAdd as u8,
+                    Token::Minus => OpCodes::OpSub as u8,
+                    Token::Multiply => OpCodes::OpMul as u8,
+                    Token::Divide => OpCodes::OpDiv as u8,
+                    _ => 0 as u8
+                };
+                byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
                 if let ExprAST::NumberExpr(trueNum) = *rhs {
                     let immediateMode: u16 = (trueNum < 256.0) as u16;
                     byteCode = byteCode | (immediateMode << 8);
@@ -108,14 +130,26 @@ impl ToastVM{
                 }
 
             },
-            OpCodes::OpAdd => {
+            OpCodes::OpAdd | OpCodes::OpSub => {
                 let reg1 = (byteCode >> 9) & 7;
                 let immediateMode = (byteCode >> 8) & (0x0001);
                 if(immediateMode == 1){
-                    self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF);
+                    match opCode {
+                        OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF);},
+                        OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - (byteCode & 0x00FF);},
+                        OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * (byteCode & 0x00FF);},
+                        OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / (byteCode & 0x00FF);},
+                        _ => {print!("Unkown Operation")}
+                    }
                 }else{
                     let reg2 = byteCode & 7;
-                    self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];
+                    match opCode {
+                        OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];},
+                        OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - self.gp_reg[reg2 as usize];},
+                        OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * self.gp_reg[reg2 as usize];},
+                        OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / self.gp_reg[reg2 as usize];},
+                        _ => {print!("Unkown Operation")}
+                    }
                 }
             },
             _ => println!("No implementation for opcode: {:#?}", opCode)
@@ -154,7 +188,7 @@ impl ToastVM{
                         "{0: <10} | {opCode:?} | Registor: {reg:?} Immediate Mode: {iMode} Number: {trueNum} | {hexCode:X}",
                         indexNum, opCode=opCode ,reg=regNum, iMode=immediateMode,trueNum=trueNum, hexCode=originalByteCode)                    
                 },
-                OpCodes::OpAdd => {
+                OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpMul | OpCodes::OpDiv => {
                     let indexNum = i;
                     let originalByteCode = byteCode;
                     let reg1 = (byteCode >> 9) & 7;
