@@ -378,7 +378,7 @@ impl<'a> Parser <'a>{
     }
     /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
-        if(!self.lexer.slice().is_ascii() || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
             return self.ParsePrimaryExpr();
         }
 

@@ -7,23 +7,30 @@ use num_derive::{self, FromPrimitive};
 
 pub struct ToastVM{
     /// General Purpose Registers (8 16-bit registers)
-    pub gp_reg: [u16; 8],
+    pub gp_reg: [u16; 9],
     /// Program Counter (Check where in the program we are)
     pub pc: usize,
     //pub mem: [u16; (1 << 16)],
+    /// Condition register. -1 for false, 0 for netural and 1 for true.
     pub cond: u8,
+    /// Sign register. -1 for false, 0 for netural and 1 for true.
+    pub sign_reg: u8,
     pub program : Vec<u16>,
-    pub free_reg: u8
+    /// Counter to note the next free register    
+    pub free_reg: u8,
 }
 
 #[derive(FromPrimitive, Debug)]
 pub enum OpCodes{
-    OpReturn = 0,
+    /// First 4 bits - OpCode
+    /// Next 4 bits - Source 
+    /// Next 4 bits - Destination
+    OpLoadReg = 0,
     /// First 4 bits - OpCode
     /// Next 3 bits - Register
     /// Next bit - 1 if Immediate mode else Multiple byte mode
     /// Last 8 bit - Number value or full of ones for the next bytes
-    OpLoad,
+    OpLoadVal,
     /// First 4 bits - OpCode
     /// Next 3 bits - First Reg
     /// Next bit - 1 if Immediate mode else Multiple byte mode
@@ -48,7 +55,7 @@ pub enum OpCodes{
 
 impl ToastVM{
     pub fn new() -> Self{
-        ToastVM { gp_reg: [0; 8], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0 }
+        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0}
     }
 
     pub fn ConvertNodeToByteCode(&mut self, node: ASTNode){
@@ -64,7 +71,7 @@ impl ToastVM{
         match expr {
             ExprAST::NumberExpr(num) => {
                 let mut byteCode: u16 = 0;
-                byteCode = byteCode | ((OpCodes::OpLoad as u16) << 12);
+                byteCode = byteCode | ((OpCodes::OpLoadVal as u16) << 12);
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
                 byteCode = byteCode | ((register as u16) << 9);
@@ -97,10 +104,16 @@ impl ToastVM{
                     if(immediateMode == 1 as u16){
                         byteCode = byteCode | (trueNum as u16);
                         self.program.push(byteCode);
+                        byteCode = 0;
+                        byteCode = byteCode | (OpCodes::OpLoadReg as u16) << 12 | (reg1 as u16) << 8 | (8) << 4;
+                        self.program.push(byteCode);
                         return None;
                     }
                     let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
                     byteCode = byteCode | (reg2 as u16);
+                    self.program.push(byteCode);
+                    byteCode = 0;
+                    byteCode = byteCode | (OpCodes::OpLoadReg as u16) << 12 | (reg1 as u16) << 8 | (8) << 4;
                     self.program.push(byteCode);
                     return None;
                 }
@@ -118,7 +131,7 @@ impl ToastVM{
         byteCode = self.program[self.pc];
         let opCode = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         match opCode {
-            OpCodes::OpLoad  => {
+            OpCodes::OpLoadVal  => {
                 let reg = (byteCode >> 9) & 7;
                 let immediateMode = (byteCode >> 8) & (0x0001);
                 if(immediateMode == 1){
@@ -130,7 +143,7 @@ impl ToastVM{
                 }
 
             },
-            OpCodes::OpAdd | OpCodes::OpSub => {
+            OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
                 let reg1 = (byteCode >> 9) & 7;
                 let immediateMode = (byteCode >> 8) & (0x0001);
                 if(immediateMode == 1){
@@ -152,6 +165,11 @@ impl ToastVM{
                     }
                 }
             },
+            OpCodes::OpLoadReg => {
+                let sourceRegNum = (byteCode >> 8) & 15;
+                let destRegNum = (byteCode >> 4) & 15;
+                self.gp_reg[destRegNum as usize] = self.gp_reg[sourceRegNum as usize];
+            },
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         self.pc = self.pc + 1;
@@ -171,7 +189,7 @@ impl ToastVM{
             byteCode = self.program[i];
             let opCode: OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
             match opCode {
-                OpCodes::OpLoad => {
+                OpCodes::OpLoadVal => {
                     let indexNum = i;
                     let originalByteCode = byteCode;
                     let regNum = (byteCode >> 9) & 7;
@@ -206,6 +224,15 @@ impl ToastVM{
                             indexNum, opCode=opCode ,reg=reg1, iMode=immediateMode,reg2=operandNum, hexCode=originalByteCode)
                     }
                 },
+                OpCodes::OpLoadReg => {
+                    let indexNum = i;
+                    let originalByteCode = byteCode;
+                    let sourceRegNum = (byteCode >> 8) & 15;
+                    let destRegNum = (byteCode >> 4) & 15;
+                    println!(
+                        "{0: <10} | {opCode:?} | Source Registor: {reg:?} Destination Registor: {destReg} | {hexCode:X}",
+                        indexNum, opCode=opCode ,reg=sourceRegNum, destReg=destRegNum, hexCode=originalByteCode)                    
+                },
                 _ => {
                     println!(
                         "{0: <10} | {1: <10} | {2: <10} | {hexCode:X}",
@@ -214,5 +241,64 @@ impl ToastVM{
             };
             i = i + 1;
         }
+    }
+}
+
+mod tests {
+    use crate::parser::Parser;
+
+    use super::ToastVM;
+    
+    #[test]
+    fn compileAndRunSimpleAdditionProgram(){
+        let code = "10 + 5";
+        let mut parser = Parser::new(code);
+        let astNodes = parser.parse();
+        let mut cpu: ToastVM = ToastVM::new();
+        for astNode in astNodes.unwrap(){
+            cpu.ConvertNodeToByteCode(astNode);
+        }
+        cpu.ConsumeByteCode();
+        assert_eq!(cpu.gp_reg[8], 15);
+    }
+
+    #[test]
+    fn compileAndRunSimpleMultiplicationProgram(){
+        let code = "10 * 5";
+        let mut parser = Parser::new(code);
+        let astNodes = parser.parse();
+        let mut cpu: ToastVM = ToastVM::new();
+        for astNode in astNodes.unwrap(){
+            cpu.ConvertNodeToByteCode(astNode);
+        }
+        cpu.ConsumeByteCode();
+        assert_eq!(cpu.gp_reg[8], 50);
+    }
+
+
+    #[test]
+    fn compileAndRunSimpleSubtractionProgram(){
+        let code = "10 - 5";
+        let mut parser = Parser::new(code);
+        let astNodes = parser.parse();
+        let mut cpu: ToastVM = ToastVM::new();
+        for astNode in astNodes.unwrap(){
+            cpu.ConvertNodeToByteCode(astNode);
+        }
+        cpu.ConsumeByteCode();
+        assert_eq!(cpu.gp_reg[8], 5);
+    }
+
+    #[test]
+    fn compileAndRunSimpleDivisionProgram(){
+        let code = "10 / 5";
+        let mut parser = Parser::new(code);
+        let astNodes = parser.parse();
+        let mut cpu: ToastVM = ToastVM::new();
+        for astNode in astNodes.unwrap(){
+            cpu.ConvertNodeToByteCode(astNode);
+        }
+        cpu.ConsumeByteCode();
+        assert_eq!(cpu.gp_reg[8], 2);
     }
 }
