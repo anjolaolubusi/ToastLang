@@ -460,7 +460,7 @@ impl<'a> Parser <'a>{
 
         let NextPrec = self.GetTokPrecedence();
         if TokPrec < NextPrec {
-            RHS = self.ParseBinOpRHS(TokPrec + 1, LHS.clone());
+            RHS = self.ParseBinOpRHS(TokPrec + 1, RHS.clone());
             if RHS.is_none() {
                 return None;
             }

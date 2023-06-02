@@ -24,7 +24,7 @@ fn main() {
         1 => {
             loop{
                 print_flush!("> ");
-            io::stdout().write_all(b"> ");
+            //io::stdout().write_all(b"> ");
             io::stdin().read_to_string(&mut buffer);
             if buffer.trim() == "exit" {
                 break;
@@ -37,10 +37,12 @@ fn main() {
             // }
             // let temp = test.unwrap();
             let mut cpu: ToastVM = ToastVM::new();
+            println!("Parser: {:?}", &test);
             for astNode in test.unwrap(){
                 cpu.ConvertNodeToByteCode(astNode);
                 cpu.LogByteCodeProgram();
                 cpu.ConsumeByteCode();
+                println!("{}", cpu.gp_reg[8]);
             }
 
             buffer = "".to_string();
