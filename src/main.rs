@@ -30,19 +30,18 @@ fn main() {
                 break;
             }
             let mut parser = parser::Parser::new(&buffer);
-            let test = parser.parse();
+            let astNodes = parser.parse();
             // if !test.is_none() {
             //     let parsed_list = test.unwrap();
             //     println!("-> Parsed: {:?}", parsed_list);
             // }
             // let temp = test.unwrap();
             let mut cpu: ToastVM = ToastVM::new();
-            println!("Parser: {:?}", &test);
-            for astNode in test.unwrap(){
+            println!("Parser: {:?}", &astNodes);
+            for astNode in astNodes.unwrap(){
                 cpu.ConvertNodeToByteCode(astNode);
-                cpu.LogByteCodeProgram();
+                //cpu.LogByteCodeProgram();
                 cpu.ConsumeByteCode();
-                println!("{}", cpu.gp_reg[8]);
             }
 
             buffer = "".to_string();

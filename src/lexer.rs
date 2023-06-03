@@ -40,8 +40,10 @@ pub enum Token {
     InclusiveForLoopTo,
     #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
-    #[regex(r"(-)?[0-9]*(\.[0-9]+)?")]
-    Number,
+    #[regex(r"[+-]?([0-9]*[.])[0-9]+")]
+    Float,
+    #[regex(r"(-)?[0-9]+")]
+    Int,
     #[token("+")]
     Plus,
     #[token("-")]
@@ -160,22 +162,22 @@ mod tests {
     #[test]
     fn lex_numbers(){
         {
-            let correct_token = Token:: Number;
+            let correct_token = Token:: Int;
             let mut lex = Token::lexer("12213");
             assert_eq!(lex.next(), Some(correct_token));
         };
         {
-            let correct_token = Token:: Number;
+            let correct_token = Token:: Float;
             let mut lex = Token::lexer("38478.23324");
             assert_eq!(lex.next(), Some(correct_token));
         };
         {
-            let correct_token = Token:: Number;
+            let correct_token = Token:: Int;
             let mut lex = Token::lexer("-7848734");
             assert_eq!(lex.next(), Some(correct_token));
         };
         {
-            let correct_token = Token:: Number;
+            let correct_token = Token:: Float;
             let mut lex = Token::lexer("-894783847.559");
             assert_eq!(lex.next(), Some(correct_token));
         };
