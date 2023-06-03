@@ -74,8 +74,12 @@ pub enum OpCodes{
     //// OpLoadFloat - Operation Code for printing results
     /// 
     /// First 4 bits - OpCode
+    OpResult,
+    //// OpLoadFloat - Operation Code for setting the current type
+    /// 
+    /// First 4 bits - OpCode
     /// Next 12 bits - Denotes type
-    OpResult
+    OpType
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
@@ -99,7 +103,8 @@ impl ToastVM{
                 // Loads opCode and register into bytecode
                 let mut byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
                 self.program.push(byteCode);
-                byteCode = 0 | (OpCodes::OpResult as u16) << 12 | (self.curType as u16);
+                self.UpdateCurType();
+                byteCode = 0 | (OpCodes::OpResult as u16) << 12;
                 self.program.push(byteCode);
             },
             _ => println!("Could not convert node to bytecode")
@@ -143,6 +148,7 @@ impl ToastVM{
                 // Adds to the program list
                 self.program.push(byteCode);
                 self.curType = VarTypes::IntType;
+                self.UpdateCurType();
                 return Some(register);
             },
             ExprAST::FloatExpr(num) => {
@@ -166,6 +172,7 @@ impl ToastVM{
                 self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
                 self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
                 self.curType = VarTypes::FloatType;
+                self.UpdateCurType();
                 return Some(register); 
             },
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
@@ -195,6 +202,15 @@ impl ToastVM{
                             byteCode = 0;
                             return Some(reg1);
                         }
+                        // Gets register for the right hand side
+                        let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
+                        // Loads register to bytecode
+                        byteCode = byteCode | (reg2 as u16);
+                        // Pushed bytecode to program list
+                        self.program.push(byteCode);
+                        return Some(reg1);
+                    },
+                    ExprAST::FloatExpr(trueNum) => {
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
                         // Loads register to bytecode
@@ -246,24 +262,39 @@ impl ToastVM{
             },
             OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
                 let reg1 = (byteCode >> 9) & 7;
-                let immediateMode = (byteCode >> 8) & (0x0001);
-                if(immediateMode == 1){
-                    match opCode {
-                        OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF) as u64;},
-                        OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - (byteCode & 0x00FF) as u64;},
-                        OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * (byteCode & 0x00FF) as u64;},
-                        OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / (byteCode & 0x00FF) as u64;},
-                        _ => {print!("Unkown Operation")}
-                    }
-                }else{
-                    let reg2 = byteCode & 7;
-                    match opCode {
-                        OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];},
-                        OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - self.gp_reg[reg2 as usize];},
-                        OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * self.gp_reg[reg2 as usize];},
-                        OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / self.gp_reg[reg2 as usize];},
-                        _ => {print!("Unkown Operation")}
-                    }
+                match self.curType {
+                    VarTypes::FloatType => {
+                        let reg2 = byteCode & 7;
+                        match opCode {
+                            OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = f64::to_bits(f64::from_bits(self.gp_reg[reg1 as usize]) + f64::from_bits(self.gp_reg[reg2 as usize]));},
+                            OpCodes::OpSub => {self.gp_reg[reg1 as usize] = f64::to_bits(f64::from_bits(self.gp_reg[reg1 as usize]) - f64::from_bits(self.gp_reg[reg2 as usize]));},
+                            OpCodes::OpMul => {self.gp_reg[reg1 as usize] = f64::to_bits(f64::from_bits(self.gp_reg[reg1 as usize]) * f64::from_bits(self.gp_reg[reg2 as usize]));},
+                            OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = f64::to_bits(f64::from_bits(self.gp_reg[reg1 as usize]) / f64::from_bits(self.gp_reg[reg2 as usize]));},
+                            _ => {print!("Unkown Operation")}
+                        }
+                    },
+                    VarTypes::IntType => {
+                        let immediateMode = (byteCode >> 8) & (0x0001);
+                        if(immediateMode == 1){
+                            match opCode {
+                                OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF) as u64;},
+                                OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - (byteCode & 0x00FF) as u64;},
+                                OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * (byteCode & 0x00FF) as u64;},
+                                OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / (byteCode & 0x00FF) as u64;},
+                                _ => {print!("Unkown Operation")}
+                            }
+                        }else{
+                            let reg2 = byteCode & 7;
+                            match opCode {
+                                OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];},
+                                OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - self.gp_reg[reg2 as usize];},
+                                OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * self.gp_reg[reg2 as usize];},
+                                OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / self.gp_reg[reg2 as usize];},
+                                _ => {print!("Unkown Operation")}
+                            }
+                        }        
+                    },
+                    _ => {println!("Unkown number type")}
                 }
             },
             OpCodes::OpLoadReg => {
@@ -272,16 +303,24 @@ impl ToastVM{
                 self.gp_reg[destRegNum as usize] = self.gp_reg[sourceRegNum as usize];
             },
             OpCodes::OpResult => {
-                let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
-                match varType {
+                match self.curType {
                     VarTypes::FloatType => {println!("{:?}", f64::from_bits(self.gp_reg[8]))}
                     _ => {println!("{:?}", self.gp_reg[8])}
                 }
+            },
+            OpCodes::OpType => {
+                let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
+                self.curType = varType;
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         self.pc = self.pc + 1;
     }
+    }
+
+    pub fn UpdateCurType(&mut self){
+        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (self.curType as u16);
+        self.program.push(byteCode);
     }
 
     /// Goes through program and logs each bytecode
