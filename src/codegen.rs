@@ -11,9 +11,9 @@ pub struct ToastVM{
     /// Program Counter (Check where in the program we are)
     pub pc: usize,
     //pub mem: [u16; (1 << 16)],
-    /// Condition register. -1 for false, 0 for netural and 1 for true.
+    /// Condition register. 2 for false, 0 for netural and 1 for true.
     pub cond: u8,
-    /// Sign register. -1 for false, 0 for netural and 1 for true.
+    /// Sign register. 2 for false, 0 for netural and 1 for true.
     pub sign_reg: u8,
     pub program : Vec<u16>, 
     /// Counter to note the next free register    
@@ -79,7 +79,12 @@ pub enum OpCodes{
     /// 
     /// First 4 bits - OpCode
     /// Next 12 bits - Denotes type
-    OpType
+    OpType,
+    //// OpSign - Operation Code for setting the sign register
+    /// 
+    /// First 4 bits - OpCode
+    /// Next 12 bits - Denotes sign
+    OpSign
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
@@ -129,7 +134,7 @@ impl ToastVM{
                 byteCode = byteCode | ((register as u16) << 9);
 
                 //Determine if we need to be in immediateMode
-                let immediateMode: u16 = (num < 256) as u16;
+                let immediateMode: u16 = (num.abs() < 256) as u16;
                 //Loads value into bytecode
                 byteCode = byteCode | (immediateMode << 8);
                 
@@ -238,6 +243,7 @@ impl ToastVM{
         let mut byteCode;
         while self.pc < self.program.len(){
         byteCode = self.program[self.pc];
+        let temp = byteCode >> 12;
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         match opCode {
             OpCodes::OpLoadVal  => {
