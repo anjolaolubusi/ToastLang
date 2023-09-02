@@ -10,12 +10,8 @@ use std::collections::HashMap;
 pub enum ExprAST {
     ///Represents a variable experssion ast node
     VariableExpr(String),
-    //Represents a number experssion ast node
-    //NumberExpr(f64),
-    ///Represents a float experssion ast node
-    FloatExpr(f64),
-    ///Represents an int experssion ast node
-    IntExpr(i64),
+    // Represents a number experssion ast node
+    NumberExpr(f64),
     ///Represents a binary expression ast node
     BinaryExpr {
         ///Token for operation
@@ -358,13 +354,8 @@ impl<'a> Parser <'a>{
             Token::Ident => {
                 return self.ParseIdentExpr();
             },
-            Token::Float => {
-                let result = ExprAST::FloatExpr(self.lexer.slice().parse::<f64>().unwrap());
-                self.getNewToken();
-                return Some(result);
-            },
-            Token::Int => {
-                let result = ExprAST::IntExpr(self.lexer.slice().parse::<i64>().unwrap());
+            Token::Number => {
+                let result = ExprAST::NumberExpr(self.lexer.slice().parse::<f64>().unwrap());
                 self.getNewToken();
                 return Some(result);
             },
@@ -387,7 +378,7 @@ impl<'a> Parser <'a>{
     }
     /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
-        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Float || self.current_token.unwrap() == Token::Int  || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
             return self.ParsePrimaryExpr();
         }
 

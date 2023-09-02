@@ -40,10 +40,8 @@ pub enum Token {
     InclusiveForLoopTo,
     #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
-    #[regex(r"[+-]?([0-9]*[.])[0-9]+")]
-    Float,
-    #[regex(r"(-)?[0-9]+")]
-    Int,
+    #[regex(r"[-]?([0-9]*)([.][0-9]+)?")]
+    Number,
     #[token("+")]
     Plus,
     #[token("-")]

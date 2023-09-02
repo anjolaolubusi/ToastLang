@@ -89,13 +89,12 @@ pub enum OpCodes{
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
 pub enum VarTypes{
-    IntType=0,
-    FloatType
+    FloatType=0
 }
 
 impl ToastVM{
     pub fn new() -> Self{
-        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::IntType}
+        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType}
     }
 
     /// Converts AST Nodes to bytecode
@@ -121,42 +120,7 @@ impl ToastVM{
     /// expr - expression
     pub fn ConvertExprToByteCode(&mut self, expr: ExprAST) -> Option<u8>{
         match expr {
-            ExprAST::IntExpr(num) => {
-                let mut byteCode: u16 = 0;
-                //Loads Op Code
-                byteCode = byteCode | ((OpCodes::OpLoadVal as u16) << 12);
-
-                //Set the register to load into
-                let register : u8  = self.free_reg;
-                self.free_reg = (self.free_reg + 1) % 8;
-
-                //Load register into bytecode
-                byteCode = byteCode | ((register as u16) << 9);
-
-                //Determine if we need to be in immediateMode
-                let immediateMode: u16 = (num.abs() < 256) as u16;
-                //Loads value into bytecode
-                byteCode = byteCode | (immediateMode << 8);
-                
-                if(immediateMode == 1 as u16){
-                    //Load number into bytecode
-                    byteCode = byteCode | (num as u16);
-                    // Adds to the program list
-                    self.program.push(byteCode);
-                    //Returns register number
-                    return Some(register);
-                }
-                // Adds to the program list
-                self.program.push(byteCode);
-                //Adds the number to the new bytecode chunk
-                byteCode = (num as u16);
-                // Adds to the program list
-                self.program.push(byteCode);
-                self.curType = VarTypes::IntType;
-                self.UpdateCurType();
-                return Some(register);
-            },
-            ExprAST::FloatExpr(num) => {
+            ExprAST::NumberExpr(num) => {
                 let mut byteCode: u16 = 0;
                 //Loads Op Code
                 byteCode = byteCode | ((OpCodes::OpLoadFloat as u16) << 12);
@@ -195,27 +159,7 @@ impl ToastVM{
                 // Loads opCode and register into bytecode
                 byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
                 match *rhs {
-                    ExprAST::IntExpr(trueNum)=> {
-                        //Determines if immediate is needed
-                        let immediateMode: u16 = (trueNum < 256) as u16;
-                        byteCode = byteCode | (immediateMode << 8);
-                        if(immediateMode == 1 as u16){
-                            // Loads number imto bytecode
-                            byteCode = byteCode | (trueNum as u16);
-                            // Pushed bytecode to program list
-                            self.program.push(byteCode);
-                            byteCode = 0;
-                            return Some(reg1);
-                        }
-                        // Gets register for the right hand side
-                        let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
-                        // Loads register to bytecode
-                        byteCode = byteCode | (reg2 as u16);
-                        // Pushed bytecode to program list
-                        self.program.push(byteCode);
-                        return Some(reg1);
-                    },
-                    ExprAST::FloatExpr(trueNum) => {
+                    ExprAST::NumberExpr(trueNum) => {
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
                         // Loads register to bytecode
@@ -279,27 +223,6 @@ impl ToastVM{
                             _ => {print!("Unkown Operation")}
                         }
                     },
-                    VarTypes::IntType => {
-                        let immediateMode = (byteCode >> 8) & (0x0001);
-                        if(immediateMode == 1){
-                            match opCode {
-                                OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + (byteCode & 0x00FF) as u64;},
-                                OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - (byteCode & 0x00FF) as u64;},
-                                OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * (byteCode & 0x00FF) as u64;},
-                                OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / (byteCode & 0x00FF) as u64;},
-                                _ => {print!("Unkown Operation")}
-                            }
-                        }else{
-                            let reg2 = byteCode & 7;
-                            match opCode {
-                                OpCodes::OpAdd => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] + self.gp_reg[reg2 as usize];},
-                                OpCodes::OpSub => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] - self.gp_reg[reg2 as usize];},
-                                OpCodes::OpMul => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] * self.gp_reg[reg2 as usize];},
-                                OpCodes::OpDiv => {self.gp_reg[reg1 as usize] = self.gp_reg[reg1 as usize] / self.gp_reg[reg2 as usize];},
-                                _ => {print!("Unkown Operation")}
-                            }
-                        }        
-                    },
                     _ => {println!("Unkown number type")}
                 }
             },
@@ -310,7 +233,7 @@ impl ToastVM{
             },
             OpCodes::OpResult => {
                 match self.curType {
-                    VarTypes::FloatType => {println!("{:?}", f64::from_bits(self.gp_reg[8]))}
+                    VarTypes::FloatType => {println!("{:?}", f64::from_bits(self.gp_reg[8]))},
                     _ => {println!("{:?}", self.gp_reg[8])}
                 }
             },
