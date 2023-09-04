@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
+use std::collections::HashMap;
+
 use crate::parser::*;
 use crate::lexer::Token;
 use num;
@@ -18,11 +20,15 @@ pub struct ToastVM{
     pub program : Vec<u16>, 
     /// Counter to note the next free register    
     pub free_reg: u8,
+    pub func_id: u16,
     /// Represent the current variable type
-    pub curType: VarTypes
+    pub curType: VarTypes,
+    /// List of function bytecode
+    pub funcByteList : HashMap<u16, usize>,
+    pub funcIdTable : HashMap<String, u16>,
 }
 
-#[derive(FromPrimitive, Debug)]
+#[derive(FromPrimitive, Debug, PartialEq)]
 pub enum OpCodes{
     /// OpLoadReg - Operation Code for copy data from register to another
     /// 
@@ -84,7 +90,14 @@ pub enum OpCodes{
     /// 
     /// First 4 bits - OpCode
     /// Next 12 bits - Denotes sign
-    OpSign
+    OpSign,
+    //// OpFunc - Operation Code for the function start 
+    /// 
+    /// First 4 bits - OpCode
+    /// Next 12 bits - Function Id
+    OpFuncBegin,
+    OpFuncEnd,
+    OpFuncCall,
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
@@ -94,7 +107,7 @@ pub enum VarTypes{
 
 impl ToastVM{
     pub fn new() -> Self{
-        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType}
+        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType, func_id: 0, funcByteList: HashMap::new(), funcIdTable: HashMap::new()}
     }
 
     /// Converts AST Nodes to bytecode
@@ -104,13 +117,32 @@ impl ToastVM{
         match node {
             ASTNode::ExpressionNode(x) => {
                 let final_reg = self.ConvertExprToByteCode(x);
+                if final_reg.is_some(){
                 // Loads opCode and register into bytecode
                 let mut byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
                 self.program.push(byteCode);
                 self.UpdateCurType();
                 byteCode = 0 | (OpCodes::OpResult as u16) << 12;
                 self.program.push(byteCode);
+                }
             },
+            ASTNode::FunctionNode(x) => {
+                let funcId = self.func_id;
+                self.funcIdTable.insert(x.Proto.Name, self.func_id);
+                let mut byteCode : u16 = 0 | ((OpCodes::OpFuncBegin as u16) << 12);
+                byteCode = byteCode | funcId;
+                self.program.push(byteCode);
+                let final_reg = self.ConvertExprToByteCode(x.Body);
+                self.UpdateCurType();
+                byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
+                self.program.push(byteCode);
+                byteCode = 0 | (OpCodes::OpResult as u16) << 12;
+                self.program.push(byteCode);
+                byteCode = 0 | (OpCodes::OpFuncEnd as u16) << 12;
+                self.program.push(byteCode);
+                self.func_id = self.func_id + 1;
+
+            }
             _ => println!("Could not convert node to bytecode")
         };
     }
@@ -178,16 +210,32 @@ impl ToastVM{
                     _ => {return None;}
                 }
             },
+            ExprAST::CallExpr { func_name, parameters } => {
+                let funcId  = self.funcIdTable.get(&func_name).unwrap();
+                let bytecode = 0 | (OpCodes::OpFuncCall as u16) << 12 | funcId;
+                self.program.push(bytecode);
+                return None;
+            }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
     }
 
-    /// Executes Byte code
-    pub fn ConsumeByteCode(&mut self){
+    pub fn processProgram(&mut self){
         let mut byteCode;
         while self.pc < self.program.len(){
-        byteCode = self.program[self.pc];
-        let temp = byteCode >> 12;
+            byteCode = self.program[self.pc];
+            let temp = byteCode >> 12;
+            self.ConsumeByteCode(byteCode);
+            self.pc = self.pc + 1;
+        }
+    }
+
+    /// Executes Byte code
+    pub fn ConsumeByteCode(&mut self, mut byteCode: u16){
+        // let mut byteCode;
+        // while self.pc < self.program.len(){
+        // byteCode = self.program[self.pc];
+        // let temp = byteCode >> 12;
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         match opCode {
             OpCodes::OpLoadVal  => {
@@ -240,11 +288,37 @@ impl ToastVM{
             OpCodes::OpType => {
                 let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
                 self.curType = varType;
-            }
+            },
+            OpCodes::OpFuncBegin => {
+                let mut func: Vec<u16> = Vec::new();
+                let funcId = byteCode & 4095;
+                let funcStart = self.pc;
+                self.pc += 1;
+                let mut opCode : OpCodes = num::FromPrimitive::from_u16(self.program[self.pc] >> 12).unwrap();
+                while (opCode != OpCodes::OpFuncEnd) {
+                    self.pc += 1;
+                    opCode = num::FromPrimitive::from_u16(self.program[self.pc] >> 12).unwrap();
+                }
+                self.funcByteList.insert(funcId, funcStart);
+            },
+            OpCodes::OpFuncCall => {
+                let funcId = byteCode & 4095;
+                let funcStart = self.funcByteList.get(&funcId).unwrap().to_owned();
+                let returnPC = self.pc + 1;
+                self.pc = funcStart;
+                self.pc += 1;
+                let mut opCode : OpCodes = num::FromPrimitive::from_u16(self.program[self.pc] >> 12).unwrap();
+                while(opCode != OpCodes::OpFuncEnd){
+                    self.ConsumeByteCode(self.program[self.pc]);
+                    self.pc += 1;
+                    opCode  = num::FromPrimitive::from_u16(self.program[self.pc] >> 12).unwrap();
+                }
+                self.pc = returnPC;
+            },
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
-        self.pc = self.pc + 1;
-    }
+//        self.pc = self.pc + 1;
+    
     }
 
     pub fn UpdateCurType(&mut self){
@@ -334,7 +408,7 @@ mod tests {
         for astNode in astNodes.unwrap(){
             cpu.ConvertNodeToByteCode(astNode);
         }
-        cpu.ConsumeByteCode();
+        cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 15);
     }
 
@@ -347,7 +421,7 @@ mod tests {
         for astNode in astNodes.unwrap(){
             cpu.ConvertNodeToByteCode(astNode);
         }
-        cpu.ConsumeByteCode();
+        cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 50);
     }
 
@@ -361,7 +435,7 @@ mod tests {
         for astNode in astNodes.unwrap(){
             cpu.ConvertNodeToByteCode(astNode);
         }
-        cpu.ConsumeByteCode();
+        cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 5);
     }
 
@@ -374,7 +448,7 @@ mod tests {
         for astNode in astNodes.unwrap(){
             cpu.ConvertNodeToByteCode(astNode);
         }
-        cpu.ConsumeByteCode();
+        cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 2);
     }
 }

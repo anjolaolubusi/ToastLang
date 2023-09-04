@@ -19,6 +19,7 @@ macro_rules! print_flush {
 fn main() {
     let mut buffer = "".to_string();
     let args: Vec<String> = env::args().collect();
+    let mut cpu: ToastVM = ToastVM::new();
     println!("{:?}", args);
     match args.len() {
         1 => {
@@ -36,12 +37,12 @@ fn main() {
             //     println!("-> Parsed: {:?}", parsed_list);
             // }
             // let temp = test.unwrap();
-            let mut cpu: ToastVM = ToastVM::new();
+
             println!("Parser: {:?}", &astNodes);
             for astNode in astNodes.unwrap(){
                 cpu.ConvertNodeToByteCode(astNode);
                 //cpu.LogByteCodeProgram();
-                cpu.ConsumeByteCode();
+                cpu.processProgram();
             }
 
             buffer = "".to_string();
