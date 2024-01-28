@@ -7,8 +7,30 @@ use crate::lexer::Token;
 use num;
 use num_derive::{self, FromPrimitive};
 
+pub struct ToastMemoryBlock {
+    pub varIdTable : Vec<f64>
+}
+
+impl ToastMemoryBlock {
+    pub fn new() -> Self{
+        ToastMemoryBlock{
+            varIdTable: Vec::<f64>::new()
+        }
+    }
+}
+
+pub struct ExprConverter {
+    pub funcIdTable : HashMap<String, u16>,
+    pub varLookUp: HashMap<String, (u16, u16)>,
+    pub curMemoryId: i128,
+    pub curType: VarTypes,
+    pub program : Vec<u16>, 
+    pub func_id: u16,
+    pub free_reg: u8
+}
+
 pub struct ToastVM{
-    /// General Purpose Registers (8 16-bit registers)
+    /// General Purpose Registers (8 64-bit registers)
     pub gp_reg: [u64; 9],
     /// Program Counter (Check where in the program we are)
     pub pc: usize,
@@ -26,6 +48,8 @@ pub struct ToastVM{
     /// List of function bytecode
     pub funcByteList : HashMap<u16, usize>,
     pub funcIdTable : HashMap<String, u16>,
+    pub memoryList: Vec<ToastMemoryBlock>,
+    pub curMemoryId: usize
 }
 
 #[derive(FromPrimitive, Debug, PartialEq)]
@@ -33,71 +57,105 @@ pub enum OpCodes{
     /// OpLoadReg - Operation Code for copy data from register to another
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 4 bits - Source 
+    /// 
     /// Next 4 bits - Destination
     OpLoadReg = 0,
     /// OpLoadVal - Operation Code for loading data into a specified register
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - Register
+    /// 
     /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
     /// Last 8 bit - Number value or full of ones for the next bytes
     OpLoadVal,
     //// OpLoadFloat - Operation Code for loading flaoats into a specified register
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - Register
-    /// /
     OpLoadFloat,
     /// OpAdd - Operation Code for adding two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - First Reg
+    /// 
     /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
     /// Mext 3 bits - Second Reg
     OpAdd,
     /// OpSub- Operation Code for subtracting two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - First Reg
+    /// 
     /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
     /// Mext 3 bits - Second Reg
     OpSub,
     /// OpMul- Operation Code for multiplying two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - First Reg
+    /// 
     /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
     /// Mext 3 bits - Second Reg
     OpMul,
     /// OpDiv- Operation Code for dividing two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - First Reg
+    /// 
     /// Next bit - 1 if Immediate mode else Multiple byte mode
-    /// Mext 3 bits - Second Reg
+    /// 
+    /// Next 3 bits - Second Reg
     OpDiv,
-    //// OpLoadFloat - Operation Code for printing results
+    //// OpResult - Operation Code for printing results
     /// 
     /// First 4 bits - OpCode
     OpResult,
-    //// OpLoadFloat - Operation Code for setting the current type
+    //// OpType - Operation Code for setting the current type
     /// 
     /// First 4 bits - OpCode
-    /// Next 12 bits - Denotes type
+    ///
+    ///  Next 12 bits - Denotes type
     OpType,
-    //// OpSign - Operation Code for setting the sign register
+    // //// OpSign - Operation Code for setting the sign register
+    // /// 
+    // /// First 4 bits - OpCode
+    // /// Next 12 bits - Denotes sign
+    // OpSign,
+
+    /// OpFunc - Operation Code for the function start 
     /// 
     /// First 4 bits - OpCode
-    /// Next 12 bits - Denotes sign
-    OpSign,
-    //// OpFunc - Operation Code for the function start 
     /// 
-    /// First 4 bits - OpCode
     /// Next 12 bits - Function Id
     OpFuncBegin,
     OpFuncEnd,
     OpFuncCall,
+    /// OpNewMemBlock - Operation Code for creating new memory block
+    ///
+    /// First 4 bits - OpCode
+    OpNewMemBlock,
+    /// OpNewVar - Operation Code for creating new variable
+    ///
+    /// First 4 bits - OpCode
+    OpNewVar,
+    /// OpLoadVar - Operation Code for loading variable value and creating variable if it doesn't exist
+    ///
+    /// First 4 bits - OpCode
+    /// Next 3 bits - Register for value
+    /// Remaining 9 bits - Varible id
+    OpLoadVar,
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
@@ -105,9 +163,17 @@ pub enum VarTypes{
     FloatType=0
 }
 
-impl ToastVM{
+impl ExprConverter {
     pub fn new() -> Self{
-        ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType, func_id: 0, funcByteList: HashMap::new(), funcIdTable: HashMap::new()}
+        ExprConverter{
+            funcIdTable: HashMap::new(),
+            varLookUp: HashMap::new(),
+            curMemoryId: -1,
+            curType: VarTypes::FloatType,
+            program: Vec::<u16>::new(),
+            func_id: 0,
+            free_reg: 0
+        }
     }
 
     /// Converts AST Nodes to bytecode
@@ -118,17 +184,18 @@ impl ToastVM{
             ASTNode::ExpressionNode(x) => {
                 let final_reg = self.ConvertExprToByteCode(x);
                 if final_reg.is_some(){
-                // Loads opCode and register into bytecode
-                let mut byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
-                self.program.push(byteCode);
-                self.UpdateCurType();
-                byteCode = 0 | (OpCodes::OpResult as u16) << 12;
-                self.program.push(byteCode);
+                    // Loads opCode and register into bytecode
+                    let mut byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
+                    self.program.push(byteCode);
+                    self.UpdateCurType();
+                    byteCode = 0 | (OpCodes::OpResult as u16) << 12;
+                    self.program.push(byteCode);
                 }
             },
             ASTNode::FunctionNode(x) => {
                 let funcId = self.func_id;
                 self.funcIdTable.insert(x.Proto.Name, self.func_id);
+                self.curMemoryId += 1;
                 let mut byteCode : u16 = 0 | ((OpCodes::OpFuncBegin as u16) << 12);
                 byteCode = byteCode | funcId;
                 self.program.push(byteCode);
@@ -211,8 +278,25 @@ impl ToastVM{
                 }
             },
             ExprAST::CallExpr { func_name, parameters } => {
-                let funcId  = self.funcIdTable.get(&func_name).unwrap();
-                let bytecode = 0 | (OpCodes::OpFuncCall as u16) << 12 | funcId;
+                let mut varId: usize = 0;
+                let funcId  =  *self.funcIdTable.get(&func_name).unwrap();
+                let mut bytecode : u16 = 0;
+                bytecode = 0 | (OpCodes::OpNewMemBlock as u16) << 12;
+                self.program.push(bytecode);
+                if !parameters.is_empty() {
+                    loop {
+                        let reg : u8 = self.ConvertExprToByteCode(parameters.get(varId).unwrap().clone()).unwrap();
+                        bytecode = 0 | (OpCodes::OpNewVar as u16) << 12;
+                        self.program.push(bytecode);
+                        bytecode =  0 | (OpCodes::OpLoadVar as u16) << 12 | (reg as u16) << 9 | (varId as u16);
+                        self.program.push(bytecode);
+                        varId += 1;
+                        if(varId >= parameters.len()){
+                            break;
+                        }
+                    }
+                }
+                bytecode = 0 | (OpCodes::OpFuncCall as u16) << 12 | funcId;
                 self.program.push(bytecode);
                 return None;
             }
@@ -220,11 +304,24 @@ impl ToastVM{
         }
     }
 
+    pub fn UpdateCurType(&mut self){
+        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (self.curType as u16);
+        self.program.push(byteCode);
+    }
+
+}
+
+impl ToastVM{
+    pub fn new() -> Self{
+        let mut vm = ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType, func_id: 0, funcByteList: HashMap::new(), funcIdTable: HashMap::new(), memoryList: Vec::<ToastMemoryBlock>::new(), curMemoryId: 0};
+        vm.memoryList.push(ToastMemoryBlock::new());
+        return vm;
+    }
+
     pub fn processProgram(&mut self){
         let mut byteCode;
         while self.pc < self.program.len(){
             byteCode = self.program[self.pc];
-            let temp = byteCode >> 12;
             self.ConsumeByteCode(byteCode);
             self.pc = self.pc + 1;
         }
@@ -290,7 +387,6 @@ impl ToastVM{
                 self.curType = varType;
             },
             OpCodes::OpFuncBegin => {
-                let mut func: Vec<u16> = Vec::new();
                 let funcId = byteCode & 4095;
                 let funcStart = self.pc;
                 self.pc += 1;
@@ -313,8 +409,24 @@ impl ToastVM{
                     self.pc += 1;
                     opCode  = num::FromPrimitive::from_u16(self.program[self.pc] >> 12).unwrap();
                 }
+                self.memoryList.pop();
+                self.curMemoryId -= 1;
                 self.pc = returnPC;
             },
+            OpCodes::OpNewMemBlock => {
+                self.memoryList.push(ToastMemoryBlock::new());
+                self.curMemoryId += 1;
+            },
+            OpCodes::OpNewVar => {
+                let curMem = self.memoryList.get_mut(self.curMemoryId).unwrap();
+                curMem.varIdTable.push(0 as f64);
+            },
+            OpCodes::OpLoadVar => {
+                let varReg = (byteCode & 0x0700) >> 9;
+                let varId = (byteCode & 0x00FF);
+                let curMem = self.memoryList.get_mut(self.curMemoryId).unwrap();
+                curMem.varIdTable[varId as usize] = f64::from_bits(self.gp_reg[varReg as usize]);
+            }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
 //        self.pc = self.pc + 1;
@@ -395,7 +507,7 @@ impl ToastVM{
 }
 
 mod tests {
-    use crate::parser::Parser;
+    use crate::{codegen::ExprConverter, parser::Parser};
 
     use super::ToastVM;
     
@@ -405,8 +517,10 @@ mod tests {
         let mut parser = Parser::new(code);
         let astNodes = parser.parse();
         let mut cpu: ToastVM = ToastVM::new();
+        let mut converter: ExprConverter = ExprConverter::new();
         for astNode in astNodes.unwrap(){
-            cpu.ConvertNodeToByteCode(astNode);
+            converter.ConvertNodeToByteCode(astNode);
+            cpu.program = converter.program.clone();
         }
         cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 15);
@@ -418,8 +532,10 @@ mod tests {
         let mut parser = Parser::new(code);
         let astNodes = parser.parse();
         let mut cpu: ToastVM = ToastVM::new();
+        let mut converter: ExprConverter = ExprConverter::new();
         for astNode in astNodes.unwrap(){
-            cpu.ConvertNodeToByteCode(astNode);
+            converter.ConvertNodeToByteCode(astNode);
+            cpu.program = converter.program.clone();
         }
         cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 50);
@@ -432,8 +548,10 @@ mod tests {
         let mut parser = Parser::new(code);
         let astNodes = parser.parse();
         let mut cpu: ToastVM = ToastVM::new();
+        let mut converter: ExprConverter = ExprConverter::new();
         for astNode in astNodes.unwrap(){
-            cpu.ConvertNodeToByteCode(astNode);
+            converter.ConvertNodeToByteCode(astNode);
+            cpu.program = converter.program.clone();
         }
         cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 5);
@@ -444,9 +562,12 @@ mod tests {
         let code = "10 / 5";
         let mut parser = Parser::new(code);
         let astNodes = parser.parse();
+        let converter: ExprConverter = ExprConverter::new();
         let mut cpu: ToastVM = ToastVM::new();
+        let mut converter: ExprConverter = ExprConverter::new();
         for astNode in astNodes.unwrap(){
-            cpu.ConvertNodeToByteCode(astNode);
+            converter.ConvertNodeToByteCode(astNode);
+            cpu.program = converter.program.clone();
         }
         cpu.processProgram();
         assert_eq!(cpu.gp_reg[8], 2);

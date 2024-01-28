@@ -8,10 +8,10 @@ use std::collections::HashMap;
 ///Expression AST node
 #[derive(PartialEq, Clone, Debug)]
 pub enum ExprAST {
-    ///Represents a variable experssion ast node
-    VariableExpr(String),
     // Represents a number experssion ast node
     NumberExpr(f64),
+    ///Represents a variable experssion ast node
+    VariableExpr(String),
     ///Represents a binary expression ast node
     BinaryExpr {
         ///Token for operation
@@ -551,7 +551,7 @@ impl<'a> Parser <'a>{
     pub fn ParseVarDeclar(&mut self) -> Option<ExprAST>{
         self.getNewToken(); //consume 'let'
         let mut newVarExpr = self.ParseExpr()?; //Parses variable declaration
-        if let ExprAST::BinaryExpr { ref mut op, lhs: _, rhs: _ ,opChar: _ } = newVarExpr {
+        if let ExprAST::BinaryExpr { ref mut op, ref mut lhs, ref mut rhs, opChar: _ } = newVarExpr {
             *op = Token::VarDeclare;
         } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
         Some(newVarExpr)

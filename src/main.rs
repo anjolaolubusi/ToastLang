@@ -1,7 +1,7 @@
 
 use std::{io::{self, Read, Write}, env, fs};
 
-use crate::codegen::ToastVM;
+use crate::codegen::{ToastVM, ExprConverter};
 
 mod parser;
 mod lexer;
@@ -20,6 +20,7 @@ fn main() {
     let mut buffer = "".to_string();
     let args: Vec<String> = env::args().collect();
     let mut cpu: ToastVM = ToastVM::new();
+    let mut converter: ExprConverter = ExprConverter::new();
     println!("{:?}", args);
     match args.len() {
         1 => {
@@ -40,7 +41,8 @@ fn main() {
 
             println!("Parser: {:?}", &astNodes);
             for astNode in astNodes.unwrap(){
-                cpu.ConvertNodeToByteCode(astNode);
+                converter.ConvertNodeToByteCode(astNode);
+                cpu.program = converter.program.clone();
                 //cpu.LogByteCodeProgram();
                 cpu.processProgram();
             }

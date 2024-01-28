@@ -1,4 +1,6 @@
 # ToastLang
+Functional Programming Language with an easier synatax to learn.
+
 
 ## Grammar Description
 Here is the grammar description. This is likely to change.
