@@ -22,7 +22,8 @@ impl ToastMemoryBlock {
 pub struct ExprConverter {
     pub funcIdTable : HashMap<String, u16>,
     pub varLookUp: HashMap<String, (u16, u16)>,
-    pub curMemoryId: i128,
+    pub curMemoryId: u16,
+    pub varCount: u16,
     pub curType: VarTypes,
     pub program : Vec<u16>, 
     pub func_id: u16,
@@ -47,7 +48,6 @@ pub struct ToastVM{
     pub curType: VarTypes,
     /// List of function bytecode
     pub funcByteList : HashMap<u16, usize>,
-    pub funcIdTable : HashMap<String, u16>,
     pub memoryList: Vec<ToastMemoryBlock>,
     pub curMemoryId: usize
 }
@@ -150,12 +150,22 @@ pub enum OpCodes{
     ///
     /// First 4 bits - OpCode
     OpNewVar,
-    /// OpLoadVar - Operation Code for loading variable value and creating variable if it doesn't exist
+    /// OpLoadVar - Operation Code for loading variable value
     ///
     /// First 4 bits - OpCode
+    /// 
     /// Next 3 bits - Register for value
+    /// 
     /// Remaining 9 bits - Varible id
     OpLoadVar,
+    /// OpLoadVarToReg - Operation Code for loading variable value to register
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - Register for value
+    /// 
+    /// Remaining 9 bits - Varible id
+    OpLoadVarToReg,
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
@@ -168,7 +178,8 @@ impl ExprConverter {
         ExprConverter{
             funcIdTable: HashMap::new(),
             varLookUp: HashMap::new(),
-            curMemoryId: -1,
+            curMemoryId: 0,
+            varCount: 0,
             curType: VarTypes::FloatType,
             program: Vec::<u16>::new(),
             func_id: 0,
@@ -243,11 +254,37 @@ impl ExprConverter {
                 self.UpdateCurType();
                 return Some(register); 
             },
+            ExprAST::VariableExpr(val) => {
+                let mut bytecode : u16 = 0;
+                if !self.varLookUp.contains_key(&val) {
+                    self.varLookUp.insert(val, (self.varCount, self.curMemoryId as u16));
+                    bytecode = 0 | (OpCodes::OpNewVar as u16) << 12;
+                    self.program.push(bytecode);
+                    return None;
+                }else{
+                    let varTuple = self.varLookUp.get(&val).unwrap();
+                    let currentReg = self.free_reg;
+                    bytecode =  0 | (OpCodes::OpLoadVarToReg as u16) << 12 | (currentReg as u16) << 9 | (varTuple.0 as u16);
+                    self.program.push(bytecode);
+                    self.free_reg = (self.free_reg + 1) % 8;
+                    return Some(currentReg);
+                }
+            },
+            ExprAST::VariableAssignExpr { varName, value } => {
+                let mut bytecode = 0;
+                self.ConvertExprToByteCode(*varName);
+                let varId = self.varCount;
+                self.varCount += 1;
+                let valueReg = self.ConvertExprToByteCode(*value).unwrap();
+                bytecode =  0 | (OpCodes::OpLoadVar as u16) << 12 | (valueReg as u16) << 9 | (varId as u16);
+                self.program.push(bytecode);
+                return  Some(0);                
+            },
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
                 // Gets register for the left hand side
                 let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
                 let mut byteCode : u16 = 0;
-                /// Gets right op code for operation
+                // Gets right op code for operation
                 let opCode : u8 = match op {
                     Token::Plus => OpCodes::OpAdd as u8,
                     Token::Minus => OpCodes::OpSub as u8,
@@ -313,7 +350,7 @@ impl ExprConverter {
 
 impl ToastVM{
     pub fn new() -> Self{
-        let mut vm = ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType, func_id: 0, funcByteList: HashMap::new(), funcIdTable: HashMap::new(), memoryList: Vec::<ToastMemoryBlock>::new(), curMemoryId: 0};
+        let mut vm = ToastVM { gp_reg: [0; 9], pc: 0, cond: 0, program: Vec::<u16>::new(), free_reg: 0, sign_reg: 0, curType: VarTypes::FloatType, func_id: 0, funcByteList: HashMap::new(), memoryList: Vec::<ToastMemoryBlock>::new(), curMemoryId: 0};
         vm.memoryList.push(ToastMemoryBlock::new());
         return vm;
     }
@@ -426,6 +463,14 @@ impl ToastVM{
                 let varId = (byteCode & 0x00FF);
                 let curMem = self.memoryList.get_mut(self.curMemoryId).unwrap();
                 curMem.varIdTable[varId as usize] = f64::from_bits(self.gp_reg[varReg as usize]);
+            },
+            OpCodes::OpLoadVarToReg => {
+                let varReg = (byteCode & 0x0700) >> 9;
+                let varId = (byteCode & 0x00FF);
+                let curMem = self.memoryList.get_mut(self.curMemoryId).unwrap();
+                let varVal = *curMem.varIdTable.get(varId as usize).unwrap();
+                let num: u64 = f64::to_bits(varVal);
+                self.gp_reg[varReg as usize] = num;
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }

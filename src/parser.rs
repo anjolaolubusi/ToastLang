@@ -12,6 +12,10 @@ pub enum ExprAST {
     NumberExpr(f64),
     ///Represents a variable experssion ast node
     VariableExpr(String),
+    VariableAssignExpr {
+        varName: Box<ExprAST>,
+        value: Box<ExprAST>
+    },
     ///Represents a binary expression ast node
     BinaryExpr {
         ///Token for operation
@@ -553,8 +557,11 @@ impl<'a> Parser <'a>{
         let mut newVarExpr = self.ParseExpr()?; //Parses variable declaration
         if let ExprAST::BinaryExpr { ref mut op, ref mut lhs, ref mut rhs, opChar: _ } = newVarExpr {
             *op = Token::VarDeclare;
+            let temp = ExprAST::VariableAssignExpr { varName: Box::new(*lhs.clone()), value: Box::new(*rhs.clone()) };
+            let xtemp = 1;
+            return Some(temp);
+
         } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
-        Some(newVarExpr)
     }
 
 }
