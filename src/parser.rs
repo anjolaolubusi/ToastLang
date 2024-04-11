@@ -13,8 +13,12 @@ pub enum ExprAST {
     ///Represents a variable experssion ast node
     VariableExpr(String),
     VariableAssignExpr {
-        varName: Box<ExprAST>,
+        varObject: Box<ExprAST>,
         value: Box<ExprAST>
+    },
+    VariableHeader {
+        name: String,
+        typeName: String
     },
     ///Represents a binary expression ast node
     BinaryExpr {
@@ -77,7 +81,7 @@ pub enum ExprAST {
         ///Name of function
         name: String,
         ///List of Arugments
-        args: Vec<String>,
+        args: Vec<ExprAST>,
         ///Body of Functions
         // body: Option<Box<ExprAST>>
         body: Vec<ExprAST>
@@ -209,10 +213,6 @@ impl<'a> Parser <'a>{
         while self.current_token.unwrap() != Token::FuncEnd{
             let curExpr = self.ParseExpr().expect("Could not parse body");
             funcBody.push(curExpr);
-            if self.current_token.unwrap() != Token::SemiColon {
-                return self.LogError("Expected a semicolon here");
-            }
-            self.getNewToken();
         }
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogError("Expected a 'end' here");
@@ -242,12 +242,16 @@ impl<'a> Parser <'a>{
             return self.LogError("Expected a '(' here");
         }
         self.getNewToken(); //Consume '('
-        let mut newArgs: Vec<String> = Vec::new();
+        let mut newArgs: Vec<ExprAST> = Vec::new();
         loop{
             match self.current_token.unwrap() {
                 Token::Ident => {
-                    newArgs.push(self.lexer.slice().to_owned());
-                    self.getNewToken();
+                    let arg = self.ParseIdentExpr().unwrap();
+                    if let ExprAST::VariableHeader { name, typeName } = arg {
+                        newArgs.push(self.ParseIdentExpr().unwrap());
+                    } else {
+                        self.LogError("Expected something like [Variable Name] : [Type]");
+                    }
                 },
                 Token::Comma => self.getNewToken(),
                 _ => break
@@ -307,24 +311,37 @@ impl<'a> Parser <'a>{
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
         let IdName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Ident
-        if self.current_token.is_none() || self.current_token.unwrap() != Token::OpeningParenthesis {
+        if self.current_token.is_none() || !vec![Token::OpeningParenthesis, Token::FuncBegin].contains(&self.current_token.unwrap()) {
             return Some(ExprAST::VariableExpr(IdName));
         }
-        self.getNewToken(); //Consume '('
-        let mut newArgs: Vec<ExprAST> = Vec::new();
-        loop{
-            let parameter = self.ParseExpr().expect("Could not parse parameter");
-            newArgs.push(parameter);
-            if self.current_token.unwrap() != Token::Comma {
-                break;
+        if self.current_token.unwrap() == Token::OpeningParenthesis {
+            self.getNewToken(); //Consume '('
+            let mut newArgs: Vec<ExprAST> = Vec::new();
+            loop{
+                let parameter = self.ParseExpr().expect("Could not parse parameter");
+                newArgs.push(parameter);
+                if self.current_token.unwrap() != Token::Comma {
+                    break;
+                }
+                self.getNewToken(); //Consume Comma
             }
-            self.getNewToken(); //Consume Comma
+            if self.current_token.unwrap() != Token::ClosingParenthesis {
+                return self.LogError("Expected a '(' here");
+            }
+            self.getNewToken(); //Consume ')'
+            return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
         }
-        if self.current_token.unwrap() != Token::ClosingParenthesis {
-            return self.LogError("Expected a '(' here");
+
+        if self.current_token.unwrap() == Token::FuncBegin {
+            // consume :
+            self.getNewToken();
+            let TypeName = self.lexer.slice().to_owned();
+            // consumes type
+            self.getNewToken();
+            return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });
         }
-        self.getNewToken(); //Consume ')'
-        return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
+
+        return  None;
     }
     /// Returns binary operation precedence
     pub fn GetTokPrecedence(&mut self)-> i64{
@@ -469,10 +486,12 @@ impl<'a> Parser <'a>{
         let mut newVarExpr = self.ParseExpr()?; //Parses variable declaration
         if let ExprAST::BinaryExpr { ref mut op, ref mut lhs, ref mut rhs, opChar: _ } = newVarExpr {
             *op = Token::VarDeclare;
-            let temp = ExprAST::VariableAssignExpr { varName: Box::new(*lhs.clone()), value: Box::new(*rhs.clone()) };
-            let xtemp = 1;
-            return Some(temp);
-
+            if let ExprAST::VariableHeader { name: _, typeName: _ } = *lhs.to_owned(){
+                let temp = ExprAST::VariableAssignExpr { varObject: Box::new(*lhs.clone()), value: Box::new(*rhs.clone()) };
+                return Some(temp);
+            }else{
+                return self.LogError("Left hand needs to be in format: let [Varible name] : [Type]");
+            }
         } else {return self.LogError("Error caused by wrong Expr variant");}
     }
 
