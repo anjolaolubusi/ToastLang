@@ -6,9 +6,9 @@ pub enum Token {
     ///Token for 'def' keyword
     #[token("def")]
     Def,
-    ///Token for 'extern' keyword
-    #[token("extern")]
-    Extern,
+    // ///Token for 'extern' keyword
+    // #[token("extern")]
+    // Extern,
     ///Token for 'if' keyword
     #[token("if")]
     If,
@@ -23,11 +23,7 @@ pub enum Token {
     EndIf,    
     ///Token for 'for' keyword
     #[token("for")]
-    For,    
-    #[token("binary")]
-    Binary,
-    #[token("unary")]
-    Unary,    
+    For,        
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]
@@ -93,14 +89,14 @@ mod tests {
         };
     }
 
-    #[test]
-    fn lex_extern(){
-        {
-            let correct_token = Token::Extern;
-            let mut lex = Token::lexer("extern");
-            assert_eq!(lex.next(), Some(correct_token));
-        };
-    }
+    // #[test]
+    // fn lex_extern(){
+    //     {
+    //         let correct_token = Token::Extern;
+    //         let mut lex = Token::lexer("extern");
+    //         assert_eq!(lex.next(), Some(correct_token));
+    //     };
+    // }
 
     #[test]
     fn lex_open_paren(){

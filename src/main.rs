@@ -1,7 +1,7 @@
 
 use std::{io::{self, Read, Write}, env, fs};
 
-use crate::codegen::{ToastVM, ExprConverter};
+// use crate::codegen::{ToastVM, ExprConverter};
 
 mod parser;
 mod lexer;
@@ -19,8 +19,8 @@ macro_rules! print_flush {
 fn main() {
     let mut buffer = "".to_string();
     let args: Vec<String> = env::args().collect();
-    let mut cpu: ToastVM = ToastVM::new();
-    let mut converter: ExprConverter = ExprConverter::new();
+    // let mut cpu: ToastVM = ToastVM::new();
+    // let mut converter: ExprConverter = ExprConverter::new();
     println!("{:?}", args);
     match args.len() {
         1 => {
@@ -40,12 +40,12 @@ fn main() {
             // let temp = test.unwrap();
 
             println!("Parser: {:?}", &astNodes);
-            for astNode in astNodes.unwrap(){
-                converter.ConvertNodeToByteCode(astNode);
-                cpu.program = converter.program.clone();
-                //cpu.LogByteCodeProgram();
-                cpu.processProgram();
-            }
+            // for astNode in astNodes.unwrap(){
+            //     converter.ConvertNodeToByteCode(astNode);
+            //     cpu.program = converter.program.clone();
+            //     //cpu.LogByteCodeProgram();
+            //     cpu.processProgram();
+            // }
 
             buffer = "".to_string();
             }

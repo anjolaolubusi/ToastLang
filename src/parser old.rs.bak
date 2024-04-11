@@ -71,16 +71,64 @@ pub enum ExprAST {
         ///Represents operand 
         Operand: Box<ExprAST>},
     ///Represents comments
-    CommentExpr(String),
-    ///Represents Functions
-    FuncExpr {
-        ///Name of function
-        name: String,
-        ///List of Arugments
-        args: Vec<String>,
-        ///Body of Functions
-        body: Option<Box<ExprAST>>
+    CommentExpr(String)
+}
+
+///Prototype AST node
+#[derive(PartialEq, Clone, Debug)]
+pub struct ProtoAST {
+    ///Name of prototype
+    pub Name: String,
+    ///List of arguments
+    pub Args: Vec<String>,
+    ///Boolean determing if the prototype is a operator
+    pub IsOperator: bool,
+    ///Binary precedence
+    pub Precedence: i64
+}
+
+impl ProtoAST{
+    ///Checks if the prototype is a unary operator
+    pub fn isUnaryOp(&self) -> bool{
+        return self.IsOperator && self.Args.len() == 1;
     }
+
+    ///Checks if the prototype is a binary operator
+    pub fn isBinaryOp(&self) -> bool{
+        return self.IsOperator && self.Args.len() == 2;
+    }
+    
+    ///Returns the name of the operator
+    pub fn getOperatorName(&self) -> String {
+        let mut operator = self.Name.clone();
+        if(self.isBinaryOp()){
+            operator =  operator.replace("binary", "");
+        }
+        if(self.isUnaryOp()){
+            operator =  operator.replace("unary", "");
+        }
+        return operator;
+    }
+}
+
+///Represents the function ast node
+#[derive(PartialEq, Clone, Debug)]
+pub struct FuncAST {
+    ///Prototype AST node
+    pub Proto: ProtoAST,
+    ///Represents body of function
+    pub Body: ExprAST
+}
+
+///Represents an AST Node
+#[derive(PartialEq, Clone, Debug)]
+pub enum ASTNode {
+    ///Node for external functions
+    ExternNode(ProtoAST),
+    ///Node for functions
+    FunctionNode(FuncAST),
+    ///Node for expressions
+    ExpressionNode(ExprAST)
 }
 
 ///Parser object
@@ -120,7 +168,24 @@ impl<'a> Parser <'a>{
             ,TokensToSkip: skipToken.clone()
         }
     }
-
+    /// Logs Error and returns None.
+    /// Used for functions where an AST node is returned
+    pub fn LogErrorASTNode(&self, error: &str) -> Option<ASTNode>{
+        println!("Error: {}", error);
+        return None;
+    }
+    /// Logs Error and returns None.
+    /// Used for functions where an Expr node is returned
+    pub fn LogErrorExprAST(&self, error: &str) -> Option<ExprAST>{
+        println!("Error: {}", error);
+        return None;
+    }
+    /// Logs Error and returns None.
+    /// Used for functions where a Proto node is returned
+    pub fn LogErrorProtoAST(&self, error: &str) -> Option<ProtoAST>{
+        println!("Error: {}", error);
+        return None;
+    }
     /// Gets the next token
     pub fn getNewToken(&mut self){
         loop{
@@ -131,15 +196,9 @@ impl<'a> Parser <'a>{
 
         }
     }
-
-    pub fn LogError(&mut self, error : &str) -> Option<ExprAST>{
-        println!("Error: {}", error);
-        return None;
-    }
-
     /// Parses given string
-    pub fn parse(&mut self) -> Option<Vec<ExprAST>> {
-        let mut program: Vec<ExprAST> = Vec::new();
+    pub fn parse(&mut self) -> Option<Vec<ASTNode>> {
+        let mut program: Vec<ASTNode> = Vec::new();
         loop {
             //println!("{:?}", program);
             if self.current_token.is_none() {
@@ -155,8 +214,9 @@ impl<'a> Parser <'a>{
             }
 
             let result = match self.current_token.unwrap() {
+                Token::Extern => self.ParseExtern(),
                 Token::Def => self.ParseDef(),
-                _ => self.ParsePrimaryExpr()
+                _ => self.ParseTopLevel()
             };
             if result.is_none() {
                 return  None;
@@ -193,43 +253,78 @@ impl<'a> Parser <'a>{
         let commentExpr = ExprAST::CommentExpr(comment);
         return Some(commentExpr);
     }
-
+    /// Parses top level expression
+    pub fn ParseTopLevel(&mut self) -> Option<ASTNode> {
+        let E = self.ParseExpr().expect("Can not parse expression");
+            return Some(ASTNode::ExpressionNode(E))
+    }
+    /// Parse extern expression
+    pub fn ParseExtern(&mut self) -> Option<ASTNode>{
+        self.getNewToken(); //Consume Extern
+        let prototype = self.ParsePrototype().expect("Could not parse prototype");
+        let astNode = ASTNode::ExternNode(prototype);
+        return Some(astNode);
+    }
     /// Parse function declaration
-    pub fn ParseDef(&mut self) -> Option<ExprAST>{
+    pub fn ParseDef(&mut self) -> Option<ASTNode>{
         self.getNewToken(); //Consume Def
-        let mut prototype : ExprAST = self.ParseFunctionHeader().expect("Could not parse function prototype");
+        let prototype = self.ParsePrototype().expect("Could not parse function prototype");
         if self.current_token.unwrap() != Token::FuncBegin {
-            return self.LogError("Expected a ':' here");
+            return self.LogErrorASTNode("Expected a ':' here");
         }
         self.getNewToken(); //Consume ':'
         //TODO: Change body to allow multiple statments
-        let funcBody = self.ParseExpr().expect("Could not parse body");
+        let body = self.ParseExpr().expect("Could not parse body");
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
-            return self.LogError("Expected a 'end' here");
+            return self.LogErrorASTNode("Expected a 'end' here");
         }
         self.getNewToken(); //Consume End
-
-        if let ExprAST::FuncExpr { name: _, args: _, body: ref mut body } = prototype {
-            *body = Some(Box::new(funcBody));
-        }
-
-        return Some(prototype);
+        let funcNode = FuncAST{
+            Proto: prototype,
+            Body: body
+        };
+        let astNode = ASTNode::FunctionNode(funcNode);
+        return Some(astNode);
     }
     /// Parses funciton prototype
-    pub fn ParseFunctionHeader(&mut self) -> Option<ExprAST>{
+    pub fn ParsePrototype(&mut self) -> Option<ProtoAST>{
+        let Kind: usize;
+        let mut BinaryPrecedence: i64 = 0;
         let prototypeName: String;
 
         match self.current_token.unwrap() {
             Token::Ident => {
                 prototypeName = self.lexer.slice().to_owned();
+                Kind = 0;        
                 self.getNewToken(); //Consume Identifer
             },
-            _ => {return self.LogError("Expected function name here")}
+            Token::Binary => {
+                self.getNewToken(); //Consume Binary
+                prototypeName = "binary".to_string() + self.lexer.slice();
+                Kind = 2;
+                self.getNewToken(); //Consume Operator
+                BinaryPrecedence =  self.lexer.slice().parse::<i64>().unwrap();
+                if(BinaryPrecedence  < 1 || BinaryPrecedence > 100){
+                    return self.LogErrorProtoAST("Invalid precedence must be between 1 and 100 inclusive");
+                }
+                self.getNewToken(); //Consume Binary precedence
+            },
+            Token::Unary => {
+                self.getNewToken(); //Consume Binary
+                let unaryName = self.lexer.slice();
+                if(!unaryName.is_ascii()){
+                    return self.LogErrorProtoAST("Expected unary operator");
+                }
+                prototypeName = "unary".to_string() + unaryName;
+                Kind = 1;
+                self.getNewToken(); //Consume Operator
+
+            }
+            _ => {return self.LogErrorProtoAST("Expected function name here")}
         }
-        
 
         if self.current_token.unwrap() != Token::OpeningParenthesis {
-            return self.LogError("Expected a '(' here");
+            return self.LogErrorProtoAST("Expected a '(' here");
         }
         self.getNewToken(); //Consume '('
         let mut newArgs: Vec<String> = Vec::new();
@@ -244,11 +339,17 @@ impl<'a> Parser <'a>{
             }
         }
         if self.current_token.unwrap() != Token::ClosingParenthesis {
-            return self.LogError("Expected a ')' here");
+            return self.LogErrorProtoAST("Expected a ')' here");
         }
         self.getNewToken(); //Consume ')'
-        let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, body: None };
-        return Some(funcExpression);
+        if(newArgs.len() != Kind && Kind != 0){
+            return self.LogErrorProtoAST("Invalid number of operands for operator");
+        }
+        let proto: ProtoAST = ProtoAST { Name: prototypeName, Args: newArgs.clone(), IsOperator: Kind != 0, Precedence: BinaryPrecedence };
+        if proto.isBinaryOp() {
+        self.BinOpPrecedence.insert(proto.getOperatorName(), proto.Precedence);
+        }
+        return Some(proto)
         
     }
     /// Parses primary expression
@@ -266,7 +367,7 @@ impl<'a> Parser <'a>{
                 self.getNewToken(); //Consumes '('
                 let expr = self.ParseExpr().expect("Could not parse expression within parenthesis");
                 if self.current_token.unwrap() != Token::ClosingParenthesis {
-                    return self.LogError("Expected a ')' here");
+                    return self.LogErrorExprAST("Expected a ')' here");
                 }
                 self.getNewToken(); //Consumes ')'
                 return Some(expr);
@@ -276,7 +377,7 @@ impl<'a> Parser <'a>{
             Token::Comment => self.ParseSingleLineComment(),
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             Token::VarDeclare => self.ParseVarDeclar(),
-            _ => {return self.LogError("Unkown Token");}
+            _ => {return self.LogErrorExprAST("Unkown Token");}
         }
     }
     /// Parses unary expression
@@ -308,7 +409,7 @@ impl<'a> Parser <'a>{
             self.getNewToken(); //Consume Comma
         }
         if self.current_token.unwrap() != Token::ClosingParenthesis {
-            return self.LogError("Expected a '(' here");
+            return self.LogErrorExprAST("Expected a '(' here");
         }
         self.getNewToken(); //Consume ')'
         return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
@@ -381,12 +482,12 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //eat the if
         let cond = self.ParseExpr().expect("Can not parse condition");
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncBegin){
-            self.LogError("Expected a : here");
+            self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //eat the :
         let then = self.ParseExpr().expect("Could not parse then statements");
         if(self.current_token.unwrap() != Token::Else && self.current_token.unwrap() != Token::EndIf){
-            self.LogError("Expected an 'else' or 'endif' here");
+            self.LogErrorExprAST("Expected an 'else' or 'endif' here");
         }
         if(self.current_token.unwrap() == Token::EndIf){
             self.getNewToken();
@@ -394,12 +495,12 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //eat the 'else'
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::FuncBegin){
-            self.LogError("Expected a : here");
+            self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //eat the :
         let Else = self.ParseExpr().expect("Error parsing else block");
         if (self.current_token.is_none() || self.current_token.unwrap() != Token::EndIf){
-            self.LogError("Expected a 'endif' here");
+            self.LogErrorExprAST("Expected a 'endif' here");
         }
         self.getNewToken(); //eat the endif
 
@@ -414,17 +515,17 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //Consume for
 
         if(self.current_token.unwrap() != Token::Ident){
-            self.LogError("Need a identifer here");
+            self.LogErrorExprAST("Need a identifer here");
         }
         let varName = self.lexer.slice();
         self.getNewToken(); //Eat identifer
         if(self.current_token.unwrap() != Token::Equals){
-            self.LogError("Need a = here");
+            self.LogErrorExprAST("Need a = here");
         }
         self.getNewToken(); // Eat =
         let Start = self.ParseExpr().expect("Something wrong with start value of loop");
         if(self.current_token.unwrap() != Token::ForLoopTo && self.current_token.unwrap() != Token::InclusiveForLoopTo){
-            self.LogError("Need a -> here");
+            self.LogErrorExprAST("Need a -> here");
         } 
         if(self.current_token.unwrap() == Token::InclusiveForLoopTo){
             inclusiveForLoop = true;
@@ -432,17 +533,17 @@ impl<'a> Parser <'a>{
         self.getNewToken(); //Eat -> or Eat ->*
         let End = self.ParseExpr().expect("Something wrong with end value of loop");
         if(self.current_token.unwrap() != Token::Comma){
-            self.LogError("Need a , here");
+            self.LogErrorExprAST("Need a , here");
         }
         self.getNewToken(); //Eat ,
         let stepBy = self.ParseExpr().expect("Can't parse step-by value here");
         if(self.current_token.unwrap() != Token::FuncBegin){
-            self.LogError("Expected a : here");
+            self.LogErrorExprAST("Expected a : here");
         }
         self.getNewToken(); //Eats :
         let body = self.ParseExpr().expect("Something wrong with parsing body of for loop");
         if(self.current_token.unwrap() != Token::FuncEnd){
-            self.LogError("Expected a end here");
+            self.LogErrorExprAST("Expected a end here");
         }
         self.getNewToken(); //Eats end
         if(inclusiveForLoop){
@@ -460,7 +561,7 @@ impl<'a> Parser <'a>{
             let xtemp = 1;
             return Some(temp);
 
-        } else {return self.LogError("Error caused by wrong Expr variant");}
+        } else {return self.LogErrorExprAST("Error caused by wrong Expr variant");}
     }
 
 }

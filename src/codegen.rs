@@ -190,10 +190,10 @@ impl ExprConverter {
     /// Converts AST Nodes to bytecode
     /// 
     /// node - AST Node
-    pub fn ConvertNodeToByteCode(&mut self, node: ASTNode){
+    pub fn ConvertNodeToByteCode(&mut self, node: ExprAST){
         match node {
-            ASTNode::ExpressionNode(x) => {
-                let final_reg = self.ConvertExprToByteCode(x);
+            ExprAST => {
+                let final_reg = self.ConvertExprToByteCode(node);
                 if final_reg.is_some(){
                     // Loads opCode and register into bytecode
                     let mut byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
@@ -203,24 +203,6 @@ impl ExprConverter {
                     self.program.push(byteCode);
                 }
             },
-            ASTNode::FunctionNode(x) => {
-                let funcId = self.func_id;
-                self.funcIdTable.insert(x.Proto.Name, self.func_id);
-                self.curMemoryId += 1;
-                let mut byteCode : u16 = 0 | ((OpCodes::OpFuncBegin as u16) << 12);
-                byteCode = byteCode | funcId;
-                self.program.push(byteCode);
-                let final_reg = self.ConvertExprToByteCode(x.Body);
-                self.UpdateCurType();
-                byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
-                self.program.push(byteCode);
-                byteCode = 0 | (OpCodes::OpResult as u16) << 12;
-                self.program.push(byteCode);
-                byteCode = 0 | (OpCodes::OpFuncEnd as u16) << 12;
-                self.program.push(byteCode);
-                self.func_id = self.func_id + 1;
-
-            }
             _ => println!("Could not convert node to bytecode")
         };
     }
@@ -336,6 +318,24 @@ impl ExprConverter {
                 bytecode = 0 | (OpCodes::OpFuncCall as u16) << 12 | funcId;
                 self.program.push(bytecode);
                 return None;
+            },
+            ExprAST::FuncExpr { name, args, body } => {
+                let funcId = self.func_id;
+                self.funcIdTable.insert(name, self.func_id);
+                self.curMemoryId += 1;
+                let mut byteCode : u16 = 0 | ((OpCodes::OpFuncBegin as u16) << 12);
+                byteCode = byteCode | funcId;
+                self.program.push(byteCode);
+                let final_reg = self.ConvertExprToByteCode(body.unwrap());
+                self.UpdateCurType();
+                byteCode = 0 | (OpCodes::OpLoadReg as u16) << 12 | (final_reg.unwrap() as u16) << 8 | (8) << 4;
+                self.program.push(byteCode);
+                byteCode = 0 | (OpCodes::OpResult as u16) << 12;
+                self.program.push(byteCode);
+                byteCode = 0 | (OpCodes::OpFuncEnd as u16) << 12;
+                self.program.push(byteCode);
+                self.func_id = self.func_id + 1;
+                return  None;
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
