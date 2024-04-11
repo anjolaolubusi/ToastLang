@@ -69,6 +69,8 @@ pub enum Token {
     FuncBegin,
     #[token("end")]
     FuncEnd,
+    #[token(";")]
+    SemiColon,
     #[error]
     Error,
     #[token("let")]

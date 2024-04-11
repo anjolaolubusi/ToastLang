@@ -79,7 +79,8 @@ pub enum ExprAST {
         ///List of Arugments
         args: Vec<String>,
         ///Body of Functions
-        body: Option<Box<ExprAST>>
+        // body: Option<Box<ExprAST>>
+        body: Vec<ExprAST>
     }
 }
 
@@ -156,7 +157,7 @@ impl<'a> Parser <'a>{
 
             let result = match self.current_token.unwrap() {
                 Token::Def => self.ParseDef(),
-                _ => self.ParsePrimaryExpr()
+                _ => self.ParseExpr()
             };
             if result.is_none() {
                 return  None;
@@ -203,14 +204,23 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //Consume ':'
         //TODO: Change body to allow multiple statments
-        let funcBody = self.ParseExpr().expect("Could not parse body");
+        // let funcBody = self.ParseExpr().expect("Could not parse body");
+        let mut funcBody = Vec::<ExprAST>::new();
+        while self.current_token.unwrap() != Token::FuncEnd{
+            let curExpr = self.ParseExpr().expect("Could not parse body");
+            funcBody.push(curExpr);
+            if self.current_token.unwrap() != Token::SemiColon {
+                return self.LogError("Expected a semicolon here");
+            }
+            self.getNewToken();
+        }
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogError("Expected a 'end' here");
         }
         self.getNewToken(); //Consume End
 
-        if let ExprAST::FuncExpr { name: _, args: _, body: ref mut body } = prototype {
-            *body = Some(Box::new(funcBody));
+        if let ExprAST::FuncExpr { name: _, args: _, ref mut body } = prototype {
+            *body = funcBody.clone();
         }
 
         return Some(prototype);
@@ -247,7 +257,7 @@ impl<'a> Parser <'a>{
             return self.LogError("Expected a ')' here");
         }
         self.getNewToken(); //Consume ')'
-        let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, body: None };
+        let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, body: Vec::<ExprAST>::new() };
         return Some(funcExpression);
         
     }
@@ -276,7 +286,10 @@ impl<'a> Parser <'a>{
             Token::Comment => self.ParseSingleLineComment(),
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             Token::VarDeclare => self.ParseVarDeclar(),
-            _ => {return self.LogError("Unkown Token");}
+            _ => {
+                println!("Unkown Token: {:?} ", self.current_token.unwrap());
+                return self.LogError("Unkown Token");
+            }
         }
     }
     /// Parses unary expression

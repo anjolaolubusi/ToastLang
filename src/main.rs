@@ -5,7 +5,6 @@ use std::{io::{self, Read, Write}, env, fs};
 
 mod parser;
 mod lexer;
-mod codegen;
 
 // macro used to print & flush without printing a new line
 macro_rules! print_flush {
@@ -40,12 +39,6 @@ fn main() {
             // let temp = test.unwrap();
 
             println!("Parser: {:?}", &astNodes);
-            // for astNode in astNodes.unwrap(){
-            //     converter.ConvertNodeToByteCode(astNode);
-            //     cpu.program = converter.program.clone();
-            //     //cpu.LogByteCodeProgram();
-            //     cpu.processProgram();
-            // }
 
             buffer = "".to_string();
             }
