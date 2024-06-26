@@ -100,8 +100,9 @@ pub struct Parser<'a>{
     ///Hashmap of binary operator precedence
     pub BinOpPrecedence: HashMap<String, i64>,
     ///List of tokens to skip over
-    pub TokensToSkip: Vec<Token>
-    // Add Operation Precedence
+    pub TokensToSkip: Vec<Token>,
+    pub line_num: usize,
+    pub col_num: usize
 }
 
 impl<'a> Parser <'a>{
@@ -123,6 +124,8 @@ impl<'a> Parser <'a>{
             ,lexer: Token::lexer(input)
             ,BinOpPrecedence: BinOp.clone()
             ,TokensToSkip: skipToken.clone()
+            ,line_num: 0
+            ,col_num: 0
         }
     }
 
@@ -130,15 +133,20 @@ impl<'a> Parser <'a>{
     pub fn getNewToken(&mut self){
         loop{
         self.current_token = self.lexer.next();
+        if self.lexer.slice().contains('\n'){
+            self.line_num += 1;
+            self.col_num = 0;
+        }
         if self.current_token.is_none() || !self.TokensToSkip.contains(&self.current_token.unwrap()) {
             break;
         }
 
         }
+        self.col_num += (self.lexer.span().end - self.lexer.span().start)
     }
 
     pub fn LogError(&mut self, error : &str) -> Option<ExprAST>{
-        println!("Error: {}", error);
+        println!("(Line Num {}, Col {}): Error: {} Col", self.line_num, self.col_num, error);
         return None;
     }
 
@@ -211,8 +219,11 @@ impl<'a> Parser <'a>{
         // let funcBody = self.ParseExpr().expect("Could not parse body");
         let mut funcBody = Vec::<ExprAST>::new();
         while self.current_token.unwrap() != Token::FuncEnd{
-            let curExpr = self.ParseExpr().expect("Could not parse body");
-            funcBody.push(curExpr);
+            let curExpr = self.ParseExpr();
+            if curExpr.is_none() {
+                return self.LogError(("Could not parse body"));
+            } 
+            funcBody.push(curExpr.unwrap());
         }
         if self.current_token.is_none() || self.current_token.unwrap() != Token::FuncEnd {
             return self.LogError("Expected a 'end' here");
@@ -247,8 +258,9 @@ impl<'a> Parser <'a>{
             match self.current_token.unwrap() {
                 Token::Ident => {
                     let arg = self.ParseIdentExpr().unwrap();
-                    if let ExprAST::VariableHeader { name, typeName } = arg {
-                        newArgs.push(self.ParseIdentExpr().unwrap());
+                    if let ExprAST::VariableHeader { name, typeName } = arg.clone() {
+                        // newArgs.push(self.ParseIdentExpr().unwrap());
+                        newArgs.push(arg.clone());
                     } else {
                         self.LogError("Expected something like [Variable Name] : [Type]");
                     }
@@ -377,7 +389,7 @@ impl<'a> Parser <'a>{
         let charBinOp = self.lexer.slice();
         
         if(self.GetTokPrecedence() == -1){
-            //Handle Error
+            return  self.LogError("Unkown Operator");
         }
 
         if(!"+-/*<>=".contains(self.lexer.slice())){
@@ -388,7 +400,7 @@ impl<'a> Parser <'a>{
         let mut RHS = self.ParseUnaryExpr();
 
         if RHS.is_none() {
-            return None;
+            return self.LogError("Empty Right Hand of Equation");
         }
 
         let NextPrec = self.GetTokPrecedence();
