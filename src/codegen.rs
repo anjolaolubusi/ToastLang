@@ -1,15 +1,215 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use crate::{parser::ExprAST}
+use std::collections::HashMap;
 
+use crate::{parser::ExprAST};
+use crate::{lexer::Token};
+use num;
+use num_derive::{self, FromPrimitive};
+
+// Holds memory of function
+#[derive(Debug)]
 pub struct MemoryBlock {
-
+    pub numberStack: Vec<f64>
 }
 
+impl MemoryBlock{
+    pub fn new() -> Self{
+        MemoryBlock {
+            numberStack: Vec::<f64>::new()
+        }
+    }
+}
+
+//Holds  cpu function of core
+#[derive(Debug)]
 pub struct VMCore {
-
+    pub registers: [u64; 8],
+    pub pc: usize,
+    pub cond: u8,
+    pub memoryList: Vec<MemoryBlock>,
+    pub curMemoryId: usize,
+    pub curType: VarTypes,
 }
 
-pub enum Opcode {
 
+impl VMCore {
+    pub fn new() -> Self{
+        let mut vm = VMCore { registers: [0; 8], pc: 0, cond: 0, memoryList: Vec::<MemoryBlock>::new(), curMemoryId: 0, curType: VarTypes::FloatType};
+        vm.memoryList.push(MemoryBlock::new());
+        return vm;
+    }
+
+    pub fn processProgram(&mut self, program: &Vec<u16>){
+        let mut byteCode;
+        while self.pc < program.len(){
+            byteCode = program[self.pc];
+            self.ConsumeByteCode(program, byteCode);
+            self.pc = self.pc + 1;
+        }
+    }
+
+    pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, mut byteCode: u16){
+        let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
+        match opCode {
+            OpCodes::OpLoadVal  => {
+                let reg = (byteCode >> 9) & 7;
+                let immediateMode = (byteCode >> 8) & (0x0001);
+                if(immediateMode == 1){
+                    self.registers[reg as usize] = ((byteCode) & (0x00FF)) as u64;
+                }else{
+                self.pc = self.pc + 1;
+                byteCode = program[self.pc];
+                self.registers[reg as usize] = byteCode as u64;
+                }
+
+            },
+            OpCodes::OpLoadFloat => {
+                let reg = (byteCode >> 9) & 7;
+                self.pc = self.pc + 1;
+                let mut num: u64 = 0;
+                num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
+                self.pc = self.pc+3;
+                self.registers[reg as usize] = num;
+                println!("Value: {}", f64::from_bits(self.registers[reg as usize]))
+            },
+            OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
+                let reg1 = (byteCode >> 9) & 7;
+                match self.curType {
+                    VarTypes::FloatType => {
+                        let reg2 = byteCode & 7;
+                        match opCode {
+                            OpCodes::OpAdd => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) + f64::from_bits(self.registers[reg2 as usize]));},
+                            OpCodes::OpSub => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) - f64::from_bits(self.registers[reg2 as usize]));},
+                            OpCodes::OpMul => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) * f64::from_bits(self.registers[reg2 as usize]));},
+                            OpCodes::OpDiv => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) / f64::from_bits(self.registers[reg2 as usize]));},
+                            _ => {print!("Unkown Operation")}
+                        }
+                        println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]))
+                    },
+                    _ => {println!("Unkown number type")}
+                }
+            },
+            OpCodes::OpLoadReg => {
+                let sourceRegNum = (byteCode >> 8) & 15;
+                let destRegNum = (byteCode >> 4) & 15;
+                self.registers[destRegNum as usize] = self.registers[sourceRegNum as usize];
+            },
+            OpCodes::OpType => {
+                let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
+                self.curType = varType;
+            },
+            _ => println!("No implementation for opcode: {:#?}", opCode)
+        }
+        
+    }
 }
+
+#[derive(FromPrimitive, Debug, PartialEq)]
+pub enum OpCodes {
+    OpLoadReg = 0,
+    OpLoadVal,
+    OpLoadFloat,
+    OpAdd,
+    OpSub,
+    OpMul,
+    OpDiv,
+    OpType
+}
+
+pub struct ASTConverter {
+    pub funcIdTable: HashMap<String, u16>,
+    pub varLookUp: HashMap<String, (u16, u16)>,
+    pub program: Vec<u16>,
+    pub curType: VarTypes,
+    pub free_reg: u8
+}
+
+#[derive(FromPrimitive, Debug, Clone, Copy)]
+pub enum VarTypes{
+    FloatType=0
+}
+
+
+impl ASTConverter {
+    pub fn new() -> Self{
+        ASTConverter{
+            funcIdTable: HashMap::new(),
+            varLookUp: HashMap::new(),
+            program: Vec::<u16>::new(),
+            curType: VarTypes::FloatType,
+            free_reg: 0
+        }
+    }
+
+    pub fn ConvertExprToByteCode(&mut self, expr: ExprAST) -> Option<u8> {
+        match expr {
+            ExprAST::NumberExpr(num) => {
+                let mut byteCode: u16 = 0;
+                //Loads Op Code
+                byteCode = byteCode | ((OpCodes::OpLoadFloat as u16) << 12);
+
+                //Set the register to load into
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+
+                //Load register into bytecode
+                byteCode = byteCode | ((register as u16) << 9);
+
+                // Adds to the program list
+                self.program.push(byteCode);
+
+                let floatBits = f64::to_bits(num);
+                self.program.push( (floatBits & 0xFFFF) as u16); //0-15
+                self.program.push( (floatBits >> 16 & 0xFFFF) as u16);//16-31
+                self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
+                self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
+                self.curType = VarTypes::FloatType;
+                self.UpdateCurType();
+                return Some(register); 
+            },
+            ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
+                // Gets register for the left hand side
+                let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
+                let mut byteCode : u16 = 0;
+                // Gets right op code for operation
+                let opCode : u8 = match op {
+                    Token::Plus => OpCodes::OpAdd as u8,
+                    Token::Minus => OpCodes::OpSub as u8,
+                    Token::Multiply => OpCodes::OpMul as u8,
+                    Token::Divide => OpCodes::OpDiv as u8,
+                    _ => 0 as u8
+                };
+                // Loads opCode and register into bytecode
+                byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
+                match *rhs {
+                    ExprAST::NumberExpr(trueNum) => {
+                        // Gets register for the right hand side
+                        let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
+                        // Loads register to bytecode
+                        byteCode = byteCode | (reg2 as u16);
+                        // Pushed bytecode to program list
+                        self.program.push(byteCode);
+                        return Some(reg1);
+                    },
+                    ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
+                        let binExpr = ExprAST::BinaryExpr { op: op, lhs: lhs, rhs: rhs, opChar: opChar };
+                        let binExprReg = self.ConvertExprToByteCode(binExpr).unwrap();
+                        byteCode = byteCode | (0 << 8) | (binExprReg as u16);
+                        self.program.push(byteCode);
+                        return Some(reg1);
+                    }
+                    _ => {return None;}
+                }
+            }
+            _ => {println!("Could not convert expression to bytecode"); return None;}
+        }
+    }
+
+    pub fn UpdateCurType(&mut self){
+        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (self.curType as u16);
+        self.program.push(byteCode);
+    }
+    
+}
+

@@ -5,6 +5,7 @@ use std::{io::{self, Read, Write}, env, fs};
 
 mod parser;
 mod lexer;
+mod codegen;
 
 // macro used to print & flush without printing a new line
 macro_rules! print_flush {
@@ -32,6 +33,8 @@ fn main() {
             }
             let mut parser = parser::Parser::new(&buffer);
             let astNodes = parser.parse();
+            let mut astConverter = codegen::ASTConverter::new();
+            let mut toastVM = codegen::VMCore::new();
             // if !test.is_none() {
             //     let parsed_list = test.unwrap();
             //     println!("-> Parsed: {:?}", parsed_list);
@@ -39,6 +42,11 @@ fn main() {
             // let temp = test.unwrap();
 
             println!("Parser: {:?}", &astNodes);
+            for ast in &astNodes.unwrap() {
+                astConverter.ConvertExprToByteCode(ast.to_owned());
+                toastVM.processProgram(&astConverter.program);
+                println!("ToastVM: {:?}", toastVM);
+            }
 
             buffer = "".to_string();
             }
