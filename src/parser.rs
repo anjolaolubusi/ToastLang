@@ -452,7 +452,6 @@ impl<'a> Parser <'a>{
     }
     /// Parses for loop expression
     pub fn ParseForExpr(&mut self) -> Option<ExprAST> {
-        let mut inclusiveForLoop = false;
         self.getNewToken(); //Consume for
 
         if(self.current_token.unwrap() != Token::Ident){
@@ -465,13 +464,10 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); // Eat =
         let Start = self.ParseExpr().expect("Something wrong with start value of loop");
-        if(self.current_token.unwrap() != Token::ForLoopTo && self.current_token.unwrap() != Token::InclusiveForLoopTo){
+        if(self.current_token.unwrap() != Token::PointTo){
             self.LogError("Need a -> here");
         } 
-        if(self.current_token.unwrap() == Token::InclusiveForLoopTo){
-            inclusiveForLoop = true;
-        }
-        self.getNewToken(); //Eat -> or Eat ->*
+        self.getNewToken(); //Eat -> 
         let End = self.ParseExpr().expect("Something wrong with end value of loop");
         if(self.current_token.unwrap() != Token::Comma){
             self.LogError("Need a , here");
@@ -487,9 +483,6 @@ impl<'a> Parser <'a>{
             self.LogError("Expected a end here");
         }
         self.getNewToken(); //Eats end
-        if(inclusiveForLoop){
-            return Some(ExprAST::InclusiveForExpr{ var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) });
-        }
         Some(ExprAST::ForExpr { var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) })
     }
 

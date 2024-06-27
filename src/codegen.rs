@@ -65,6 +65,7 @@ impl VMCore {
 
             },
             OpCodes::OpLoadFloat => {
+                self.curType = VarTypes::FloatType;
                 let reg = (byteCode >> 9) & 7;
                 self.pc = self.pc + 1;
                 let mut num: u64 = 0;
@@ -164,8 +165,8 @@ impl ASTConverter {
                 self.program.push( (floatBits >> 16 & 0xFFFF) as u16);//16-31
                 self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
                 self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
-                self.curType = VarTypes::FloatType;
-                self.UpdateCurType();
+                // self.curType = VarTypes::FloatType;
+                // self.UpdateCurType();
                 return Some(register); 
             },
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
