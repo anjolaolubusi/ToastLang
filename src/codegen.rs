@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
@@ -61,7 +61,7 @@ impl VMCore {
                 num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
                 self.pc = self.pc+3;
                 self.registers[reg as usize] = num;
-                println!("Value: {}", f64::from_bits(self.registers[reg as usize]))
+                println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
             },
             OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
                 let reg1 = (byteCode >> 9) & 7;
@@ -94,6 +94,21 @@ impl VMCore {
                     VarTypes::FloatType => {
                         let reg = byteCode & 7;
                         self.memoryList.get_mut(self.curMemoryId).unwrap().numberStack.push(f64::from_bits(self.registers[reg as usize]));
+                    }
+                    _ => {println!("Unkown variable type")}
+                }
+            },
+            OpCodes::OpLoadVar => {
+                match self.curType {
+                    VarTypes::FloatType => {
+                        let reg = (byteCode >> 9) & 7;
+                        self.pc = self.pc + 1;
+                        let mut varId: u64 = 0;
+                        varId = varId | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
+                        self.pc = self.pc+3;
+                        self.registers[reg as usize] = f64::to_bits( *self.memoryList.get(self.curMemoryId).unwrap().numberStack.get(varId as usize).unwrap() );
+                        println!("Variable Value: {}", f64::from_bits(self.registers[reg as usize]))
+
                     }
                     _ => {println!("Unkown variable type")}
                 }
@@ -176,18 +191,18 @@ pub enum OpCodes {
     /// 
     /// First 4 bits - OpCode
     /// 
-    /// Last 12 bits - Variable Id
+    /// Next 3 bits - Register Num
     OpLoadVar,
 }
 
 pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u16>,
     // Key is variable name, Value is (Memory Block, VarType, Variable Id)
-    pub varLookUp: HashMap<String, (u128, VarTypes, u128)>,
+    pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
     pub program: Vec<u16>,
     pub curType: VarTypes,
     pub curMemoryBlock: u128,
-    pub curNumVarId: u128,
+    pub curNumVarId: u64,
     pub free_reg: u8
 }
 
@@ -234,17 +249,38 @@ impl ASTConverter {
                 self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
                 self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
                 // self.curType = VarTypes::FloatType;
-                // self.UpdateCurType();
+                self.UpdateCurType(VarTypes::FloatType);
                 return Some(register); 
             },
+            ExprAST::VariableExpr(name) => {
+                let mut byteCode: u16 = 0;
+                let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
+                self.UpdateCurType(varIdTuple.1);
+                let varId = varIdTuple.2;
+                byteCode = byteCode | ((OpCodes::OpLoadVar as u16) << 12);
+                
+                //Set the register to load into
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+
+                byteCode = byteCode | ((register as u16) << 9);
+                self.program.push(byteCode);
+
+                self.program.push( (varId & 0xFFFF) as u16); //0-15
+                self.program.push( (varId >> 16 & 0xFFFF) as u16);//16-31
+                self.program.push( ((varId >> 32 & 0xFFFF)) as u16); //31-47
+                self.program.push( ((varId >> 48 & 0xFFFF)) as u16); //48-63
+
+                return Some(register);
+            }
             ExprAST::VariableAssignExpr { varObject, value } => {
                 let mut byteCode: u16 = 0;
                 let num_register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
                     match typeName.as_str() {
                         "number" => {
-                            self.curType = VarTypes::FloatType;
-                            self.UpdateCurType();
+                            // self.curType = VarTypes::FloatType;
+                            self.UpdateCurType(VarTypes::FloatType);
                             num_register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
                             self.varLookUp.insert(name, (self.curMemoryBlock, self.curType, self.curNumVarId));
                             byteCode = byteCode | ((OpCodes::OpNewVar as u16) << 12) | num_register_val as u16;
@@ -302,10 +338,11 @@ impl ASTConverter {
         }
     }
 
-    pub fn UpdateCurType(&mut self){
-        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (self.curType as u16);
+    pub fn UpdateCurType(&mut self, curType: VarTypes){
+        self.curType = curType;
+        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (curType as u16);
         self.program.push(byteCode);
     }
-    
+
 }
 

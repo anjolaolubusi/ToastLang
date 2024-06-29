@@ -25,6 +25,7 @@ fn main() {
     match args.len() {
         1 => {
             let mut toast_vm = codegen::VMCore::new();
+            let mut ast_converter = codegen::ASTConverter::new();
             loop{
                 print_flush!("> ");
             //io::stdout().write_all(b"> ");
@@ -34,7 +35,6 @@ fn main() {
             }
             let mut parser = parser::Parser::new(&buffer);
             let ast_nodes = parser.parse();
-            let mut ast_converter = codegen::ASTConverter::new();
             // if !test.is_none() {
             //     let parsed_list = test.unwrap();
             //     println!("-> Parsed: {:?}", parsed_list);
