@@ -2,8 +2,8 @@
 #![allow(unused_parens)]
 use std::collections::HashMap;
 
-use crate::{parser::ExprAST};
-use crate::{lexer::Token};
+use crate::parser::ExprAST;
+use crate::lexer::Token;
 use num;
 use num_derive::{self, FromPrimitive};
 
@@ -49,7 +49,7 @@ impl VMCore {
         }
     }
 
-    pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, mut byteCode: u16){
+    pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, byteCode: u16){
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         println!("opCodes: {:?}", opCode);
         match opCode {
@@ -94,7 +94,6 @@ impl VMCore {
                     VarTypes::FloatType => {
                         let reg = byteCode & 7;
                         self.memoryList.get_mut(self.curMemoryId).unwrap().numberStack.push(f64::from_bits(self.registers[reg as usize]));
-                        let temp = 0;
                     }
                     _ => {println!("Unkown variable type")}
                 }
@@ -240,7 +239,7 @@ impl ASTConverter {
             },
             ExprAST::VariableAssignExpr { varObject, value } => {
                 let mut byteCode: u16 = 0;
-                let mut num_register_val: u8;
+                let num_register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
                     match typeName.as_str() {
                         "number" => {
@@ -265,7 +264,7 @@ impl ASTConverter {
                 }
                 return None;
             }
-            ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
+            ExprAST::BinaryExpr { op, lhs, rhs, opChar: _ } => {
                 // Gets register for the left hand side
                 let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
                 let mut byteCode : u16 = 0;
@@ -280,7 +279,7 @@ impl ASTConverter {
                 // Loads opCode and register into bytecode
                 byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
                 match *rhs {
-                    ExprAST::NumberExpr(trueNum) => {
+                    ExprAST::NumberExpr(_) => {
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
                         // Loads register to bytecode

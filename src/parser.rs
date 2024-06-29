@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 use logos::{Lexer, Logos};
-use crate::{lexer::Token};
+use crate::lexer::Token;
 use std::collections::HashMap;
 
 
@@ -49,18 +49,6 @@ pub enum ExprAST {
         ///Name of iterator variable
         var: String, 
         //Starting value
-        start: Box<ExprAST>,
-        ///Ending value
-        end: Box<ExprAST>,
-        ///Stepping function
-        stepFunc: Box<ExprAST>,
-        ///Body of the for loop
-        body: Box<ExprAST>},
-    /// Represents an inclusive for loop statement 
-    InclusiveForExpr{
-        ///Name of iterator variable
-        var: String,
-        ///Starting value
         start: Box<ExprAST>,
         ///Ending value
         end: Box<ExprAST>,
@@ -258,7 +246,7 @@ impl<'a> Parser <'a>{
             match self.current_token.unwrap() {
                 Token::Ident => {
                     let arg = self.ParseIdentExpr().unwrap();
-                    if let ExprAST::VariableHeader { name, typeName } = arg.clone() {
+                    if let ExprAST::VariableHeader { name: _, typeName: _ } = arg.clone() {
                         // newArgs.push(self.ParseIdentExpr().unwrap());
                         newArgs.push(arg.clone());
                     } else {

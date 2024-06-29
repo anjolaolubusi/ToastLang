@@ -24,7 +24,7 @@ fn main() {
     println!("{:?}", args);
     match args.len() {
         1 => {
-            let mut toastVM = codegen::VMCore::new();
+            let mut toast_vm = codegen::VMCore::new();
             loop{
                 print_flush!("> ");
             //io::stdout().write_all(b"> ");
@@ -33,19 +33,19 @@ fn main() {
                 break;
             }
             let mut parser = parser::Parser::new(&buffer);
-            let astNodes = parser.parse();
-            let mut astConverter = codegen::ASTConverter::new();
+            let ast_nodes = parser.parse();
+            let mut ast_converter = codegen::ASTConverter::new();
             // if !test.is_none() {
             //     let parsed_list = test.unwrap();
             //     println!("-> Parsed: {:?}", parsed_list);
             // }
             // let temp = test.unwrap();
 
-            println!("Parser: {:?}", &astNodes);
-            for ast in &astNodes.unwrap() {
-                astConverter.ConvertExprToByteCode(ast.to_owned());
-                toastVM.processProgram(&astConverter.program);
-                println!("ToastVM: {:?}", toastVM);
+            println!("Parser: {:?}", &ast_nodes);
+            for ast in &ast_nodes.unwrap() {
+                ast_converter.ConvertExprToByteCode(ast.to_owned());
+                toast_vm.processProgram(&ast_converter.program);
+                println!("ToastVM: {:?}", toast_vm);
             }
 
             buffer = "".to_string();
