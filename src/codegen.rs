@@ -51,19 +51,8 @@ impl VMCore {
 
     pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, mut byteCode: u16){
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
+        println!("opCodes: {:?}", opCode);
         match opCode {
-            OpCodes::OpLoadVal  => {
-                let reg = (byteCode >> 9) & 7;
-                let immediateMode = (byteCode >> 8) & (0x0001);
-                if(immediateMode == 1){
-                    self.registers[reg as usize] = ((byteCode) & (0x00FF)) as u64;
-                }else{
-                self.pc = self.pc + 1;
-                byteCode = program[self.pc];
-                self.registers[reg as usize] = byteCode as u64;
-                }
-
-            },
             OpCodes::OpLoadFloat => {
                 self.curType = VarTypes::FloatType;
                 let reg = (byteCode >> 9) & 7;
@@ -100,6 +89,16 @@ impl VMCore {
                 let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
                 self.curType = varType;
             },
+            OpCodes::OpNewVar => {
+                match self.curType {
+                    VarTypes::FloatType => {
+                        let reg = byteCode & 7;
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().numberStack.push(f64::from_bits(self.registers[reg as usize]));
+                        let temp = 0;
+                    }
+                    _ => {println!("Unkown variable type")}
+                }
+            }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         
@@ -108,27 +107,95 @@ impl VMCore {
 
 #[derive(FromPrimitive, Debug, PartialEq)]
 pub enum OpCodes {
+    /// OpLoadReg - Operation Code for copy data from register to another
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 4 bits - Source 
+    /// 
+    /// Next 4 bits - Destination
     OpLoadReg = 0,
-    OpLoadVal,
+    //// OpLoadFloat - Operation Code for loading flaoats into a specified register
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - Register
     OpLoadFloat,
+    /// OpAdd - Operation Code for adding two numbers that are either in two registers or in the op-code bytecode
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - First Reg
+    /// 
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
+    /// Next 3 bits - Second Reg
     OpAdd,
+    /// OpSub- Operation Code for subtracting two numbers that are either in two registers or in the op-code bytecode
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - First Reg
+    /// 
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
+    /// Next 3 bits - Second Reg
     OpSub,
+    /// OpMul- Operation Code for multiplying two numbers that are either in two registers or in the op-code bytecode
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - First Reg
+    /// 
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
+    /// Next 3 bits - Second Reg
     OpMul,
+    /// OpDiv- Operation Code for dividing two numbers that are either in two registers or in the op-code bytecode
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Next 3 bits - First Reg
+    /// 
+    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// 
+    /// Next 3 bits - Second Reg
     OpDiv,
-    OpType
+    //// OpType - Operation Code for setting the current type
+    /// 
+    /// First 4 bits - OpCode
+    ///
+    ///  Next 12 bits - Denotes type
+    OpType,
+    //// OpNewVar - Operation Code for adding a variable
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Last 3 bits - Reg of variable value
+    OpNewVar,
+    //// OpLoadVar - Operation Load Variable To register
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Last 12 bits - Variable Id
+    OpLoadVar,
 }
 
 pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u16>,
-    pub varLookUp: HashMap<String, (u16, u16)>,
+    // Key is variable name, Value is (Memory Block, VarType, Variable Id)
+    pub varLookUp: HashMap<String, (u128, VarTypes, u128)>,
     pub program: Vec<u16>,
     pub curType: VarTypes,
+    pub curMemoryBlock: u128,
+    pub curNumVarId: u128,
     pub free_reg: u8
 }
 
 #[derive(FromPrimitive, Debug, Clone, Copy)]
 pub enum VarTypes{
-    FloatType=0
+    NullType=0,
+    FloatType,
 }
 
 
@@ -139,6 +206,8 @@ impl ASTConverter {
             varLookUp: HashMap::new(),
             program: Vec::<u16>::new(),
             curType: VarTypes::FloatType,
+            curMemoryBlock: 0,
+            curNumVarId: 0,
             free_reg: 0
         }
     }
@@ -169,6 +238,33 @@ impl ASTConverter {
                 // self.UpdateCurType();
                 return Some(register); 
             },
+            ExprAST::VariableAssignExpr { varObject, value } => {
+                let mut byteCode: u16 = 0;
+                let mut num_register_val: u8;
+                if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
+                    match typeName.as_str() {
+                        "number" => {
+                            self.curType = VarTypes::FloatType;
+                            self.UpdateCurType();
+                            num_register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
+                            self.varLookUp.insert(name, (self.curMemoryBlock, self.curType, self.curNumVarId));
+                            byteCode = byteCode | ((OpCodes::OpNewVar as u16) << 12) | num_register_val as u16;
+                            self.program.push(byteCode);
+                            self.curNumVarId += 1;
+                            return Some(num_register_val);
+                        },
+                        _ => panic!("Can not compile variable type")
+                    }
+
+                    // match *value {
+                    //     ExprAST::NumberExpr(num) =>  {
+                    //         num_register_val = self.ConvertExprToByteCode(*value);
+                    //     },
+                    //     _ => panic!("Can not compile variable value")
+                    // }
+                }
+                return None;
+            }
             ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
                 // Gets register for the left hand side
                 let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
