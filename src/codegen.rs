@@ -28,14 +28,25 @@ pub struct VMCore {
     pub pc: usize,
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
+    pub funcList: HashMap<usize, (usize, Vec<VarTypes>)>,
     pub curMemoryId: usize,
+    pub curFunctionId: usize,
     pub curType: VarTypes,
 }
 
 
 impl VMCore {
     pub fn new() -> Self{
-        let mut vm = VMCore { registers: [0; 8], pc: 0, cond: 0, memoryList: Vec::<MemoryBlock>::new(), curMemoryId: 0, curType: VarTypes::FloatType};
+        let mut vm = VMCore {
+            registers: [0; 8],
+            pc: 0,
+            cond: 0,
+            memoryList: Vec::<MemoryBlock>::new(),
+            funcList: HashMap::new(),
+            curMemoryId: 0,
+            curFunctionId: 0,
+            curType: VarTypes::FloatType
+        };
         vm.memoryList.push(MemoryBlock::new());
         return vm;
     }
@@ -51,7 +62,6 @@ impl VMCore {
 
     pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, byteCode: u16){
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
-        println!("opCodes: {:?}", opCode);
         match opCode {
             OpCodes::OpLoadFloat => {
                 self.curType = VarTypes::FloatType;
@@ -112,6 +122,25 @@ impl VMCore {
                     }
                     _ => {println!("Unkown variable type")}
                 }
+            },
+            OpCodes::OpStartFunc => {
+                let param_num = byteCode & 0x0FFF;
+                println!("Para Number is {param_num}");
+                let mut paramTypes = Vec::<VarTypes>::new();
+                for _ in 0..param_num{
+                    self.pc = self.pc + 1;
+                    let varType : VarTypes = num::FromPrimitive::from_u16(program[self.pc] & 0x0FFF).unwrap();
+                    paramTypes.push(varType);
+                }
+                self.pc += 1;
+                let startPCval = self.pc;
+                self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone()));
+                while program[self.pc] >> 12 != (OpCodes::OpEndFunc as u16) {
+                    self.pc += 1;
+                }
+
+                self.pc += 1;
+                
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
@@ -193,16 +222,33 @@ pub enum OpCodes {
     /// 
     /// Next 3 bits - Register Num
     OpLoadVar,
+    //// OpStartFunc - Operation Code to Start Function Definition
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Last 12 bits - Number of parameters
+    OpStartFunc,
+    //// OpAddFuncParameter - Operation Code to Add Function Parameter
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Last 12 bits - VarType
+    OpAddFuncParameter,
+    //// OpEndFunc - Operation Code to Start Function Definition
+    /// 
+    /// First 4 bits - OpCode
+    OpEndFunc,
 }
 
 pub struct ASTConverter {
-    pub funcIdTable: HashMap<String, u16>,
+    pub funcIdTable: HashMap<String, u64>,
     // Key is variable name, Value is (Memory Block, VarType, Variable Id)
     pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
     pub program: Vec<u16>,
     pub curType: VarTypes,
     pub curMemoryBlock: u128,
     pub curNumVarId: u64,
+    pub curFuncId: u64,
     pub free_reg: u8
 }
 
@@ -222,6 +268,7 @@ impl ASTConverter {
             curType: VarTypes::FloatType,
             curMemoryBlock: 0,
             curNumVarId: 0,
+            curFuncId: 0,
             free_reg: 0
         }
     }
@@ -333,6 +380,49 @@ impl ASTConverter {
                     }
                     _ => {return None;}
                 }
+            },
+            ExprAST::FuncExpr { name, args, body } => {
+                let mut bytecode: u16 = 0;
+                let oldMemoryBlockId = self.curMemoryBlock;
+                let oldNumVarId = self.curNumVarId;
+                let oldVarLookup = self.varLookUp.clone();
+                self.curNumVarId = 0;
+                self.varLookUp = HashMap::new();
+                self.curMemoryBlock = self.curMemoryBlock + 1;
+                // Insert Function Name with funcID
+                self.funcIdTable.insert(name, self.curFuncId);
+                self.curFuncId = self.curFuncId + 1;
+                let param_count = (args.len() as u16);
+                bytecode = bytecode  | (OpCodes::OpStartFunc as u16) << 12 | param_count;
+                self.program.push(bytecode);
+
+                // Loop through arguments and load them in to the function def
+                for param in args{
+                    if let ExprAST::VariableHeader { name, typeName } = param {
+                        match typeName.as_str() {
+                            "number" => {
+                                bytecode = 0 | (OpCodes::OpAddFuncParameter as u16) << 12 | (VarTypes::FloatType as u16);
+                                self.program.push(bytecode);
+                                self.varLookUp.insert(name, (self.curMemoryBlock, VarTypes::FloatType, self.curNumVarId));
+                                self.curNumVarId += 1;
+                            }
+                            _ => panic!("Can not compile data types")
+                        }
+                    }
+                }
+
+                // Parse through body
+                let mut lastReg: u8 = 0;
+                for bodyExpr in body{
+                    lastReg = self.ConvertExprToByteCode(bodyExpr).unwrap();
+                }
+                // Add FuncEnd part
+                bytecode = 0 | (OpCodes::OpEndFunc as u16) << 12;
+                self.program.push(bytecode);
+                self.curMemoryBlock = oldMemoryBlockId;
+                self.curNumVarId = oldNumVarId;
+                self.varLookUp = oldVarLookup.clone();
+                return Some(lastReg);
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }

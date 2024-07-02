@@ -35,11 +35,6 @@ fn main() {
             }
             let mut parser = parser::Parser::new(&buffer);
             let ast_nodes = parser.parse();
-            // if !test.is_none() {
-            //     let parsed_list = test.unwrap();
-            //     println!("-> Parsed: {:?}", parsed_list);
-            // }
-            // let temp = test.unwrap();
 
             println!("Parser: {:?}", &ast_nodes);
             for ast in &ast_nodes.unwrap() {
