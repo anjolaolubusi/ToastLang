@@ -317,6 +317,7 @@ impl<'a> Parser <'a>{
         if self.current_token.unwrap() == Token::OpeningParenthesis {
             self.getNewToken(); //Consume '('
             let mut newArgs: Vec<ExprAST> = Vec::new();
+            if self.current_token.unwrap()!= Token::ClosingParenthesis {
             loop{
                 let parameter = self.ParseExpr().expect("Could not parse parameter");
                 newArgs.push(parameter);
@@ -327,6 +328,7 @@ impl<'a> Parser <'a>{
             }
             if self.current_token.unwrap() != Token::ClosingParenthesis {
                 return self.LogError("Expected a '(' here");
+            }
             }
             self.getNewToken(); //Consume ')'
             return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
