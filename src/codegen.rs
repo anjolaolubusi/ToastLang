@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use std::{borrow::Borrow, collections::HashMap};
+use std::{collections::HashMap, u16};
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
@@ -139,8 +139,29 @@ impl VMCore {
                     self.pc += 1;
                 }
 
-                self.pc += 1;
+                // self.pc += 1;
                 
+            },
+            OpCodes::OpCallFunc => {
+                let function_id = byteCode & 0x0FFF;
+                let func_data = self.funcList.get(&(function_id as usize)).unwrap_or_else(|| {panic!("Unkown function")}).clone();
+                self.pc += 1;
+                self.memoryList.push(MemoryBlock::new());
+                self.curMemoryId += 1;
+                while (program[self.pc] >> 12) != OpCodes::OpEndParamLoad as u16 {
+                    self.ConsumeByteCode(program, program[self.pc]);
+                    self.pc += 1;
+                }
+                let oldPC = self.pc;
+                self.pc = func_data.0;
+                while (program[self.pc] >> 12)  != (OpCodes::OpEndFunc as u16) {
+                    self.ConsumeByteCode(program, program[self.pc]);
+                    self.pc += 1;
+                }
+                self.pc = oldPC;
+                self.memoryList.pop();
+                self.curMemoryId -= 1;
+
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
@@ -238,6 +259,13 @@ pub enum OpCodes {
     /// 
     /// First 4 bits - OpCode
     OpEndFunc,
+    //// OpCallFunc - Operation Code to call functiomn
+    /// 
+    /// First 4 bits - OpCode
+    /// 
+    /// Last 12 bits - Function Id
+    OpCallFunc,
+    OpEndParamLoad
 }
 
 pub struct ASTConverter {
@@ -423,6 +451,24 @@ impl ASTConverter {
                 self.curNumVarId = oldNumVarId;
                 self.varLookUp = oldVarLookup.clone();
                 return Some(lastReg);
+            },
+            ExprAST::CallExpr { func_name, parameters } => {
+                let funcIdOption = self.funcIdTable.get(&func_name);
+                let mut bytecode: u16;
+                if funcIdOption.is_none() {
+                    println!("Function {:#?} Not found", func_name.as_str());
+                }
+                bytecode = 0 | (OpCodes::OpCallFunc as u16) << 12 | (*funcIdOption.unwrap()) as u16;
+                self.program.push(bytecode);
+                let mut param_reg :Option<u8> = Some(self.free_reg);
+                for param in parameters {
+                    param_reg = self.ConvertExprToByteCode(param);
+                    bytecode = 0 | (OpCodes::OpNewVar as u16) << 12 | (param_reg.unwrap() as u16);
+                    self.program.push(bytecode);
+                }
+                bytecode = 0 |  (OpCodes::OpEndParamLoad as u16) << 12;
+                self.program.push(bytecode);
+                return param_reg;
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
