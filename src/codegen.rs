@@ -28,6 +28,7 @@ pub struct VMCore {
     pub pc: usize,
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
+    /// Key is function Id, Value is (Start pc value, list of param types)
     pub funcList: HashMap<usize, (usize, Vec<VarTypes>)>,
     pub curMemoryId: usize,
     pub curFunctionId: usize,
@@ -65,18 +66,22 @@ impl VMCore {
         match opCode {
             OpCodes::OpLoadFloat => {
                 self.curType = VarTypes::FloatType;
+                // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
                 let reg = (byteCode >> 9) & 7;
                 self.pc = self.pc + 1;
                 let mut num: u64 = 0;
+                //Float is seperated in 4 16 bit chunks
                 num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
                 self.pc = self.pc+3;
                 self.registers[reg as usize] = num;
                 println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
             },
             OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
+                // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
                 let reg1 = (byteCode >> 9) & 7;
                 match self.curType {
                     VarTypes::FloatType => {
+                        // Mask bytecode by 7 (00000111)
                         let reg2 = byteCode & 7;
                         match opCode {
                             OpCodes::OpAdd => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) + f64::from_bits(self.registers[reg2 as usize]));},
@@ -138,6 +143,7 @@ impl VMCore {
                 while program[self.pc] >> 12 != (OpCodes::OpEndFunc as u16) {
                     self.pc += 1;
                 }
+                self.curFunctionId += 1;
 
                 // self.pc += 1;
                 
