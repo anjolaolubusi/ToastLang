@@ -290,6 +290,7 @@ pub struct ASTConverter {
 pub enum VarTypes{
     NullType=0,
     FloatType,
+    CharType
 }
 
 
@@ -333,6 +334,10 @@ impl ASTConverter {
                 self.UpdateCurType(VarTypes::FloatType);
                 return Some(register); 
             },
+            ExprAST::CharExpr(val) => {
+                let mut byteCode: u16 = 0;
+                return  None;
+            }
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u16 = 0;
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();

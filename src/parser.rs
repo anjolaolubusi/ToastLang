@@ -10,6 +10,8 @@ use std::collections::HashMap;
 pub enum ExprAST {
     // Represents a number experssion ast node
     NumberExpr(f64),
+    // Represent a char expression ast node
+    CharExpr(String),
     ///Represents a variable experssion ast node
     VariableExpr(String),
     VariableAssignExpr {
@@ -276,6 +278,12 @@ impl<'a> Parser <'a>{
                 self.getNewToken();
                 return Some(result);
             },
+            Token::Char => {
+                let charValue = self.lexer.slice().parse::<String>().unwrap();
+                charValue.replace("\'", "");
+                let result = ExprAST::CharExpr(charValue);
+                return  Some(result);
+            }
             Token::OpeningParenthesis => {
                 self.getNewToken(); //Consumes '('
                 let expr = self.ParseExpr().expect("Could not parse expression within parenthesis");
