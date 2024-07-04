@@ -64,17 +64,34 @@ impl VMCore {
     pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, byteCode: u16){
         let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
         match opCode {
-            OpCodes::OpLoadFloat => {
-                self.curType = VarTypes::FloatType;
-                // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
-                let reg = (byteCode >> 9) & 7;
-                self.pc = self.pc + 1;
-                let mut num: u64 = 0;
-                //Float is seperated in 4 16 bit chunks
-                num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
-                self.pc = self.pc+3;
-                self.registers[reg as usize] = num;
-                println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
+            OpCodes::OpLoadScalar => {
+                // Add check for Scalar Type
+                // Determine action based on scalar type
+
+                let curType: VarTypes = num::FromPrimitive::from_u16((byteCode & 0x00FF)).unwrap();
+                match curType {
+                    VarTypes::FloatType => {
+                        self.curType = VarTypes::FloatType;
+                        // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
+                        let reg = (byteCode >> 9) & 7;
+                        self.pc = self.pc + 1;
+                        let mut num: u64 = 0;
+                        //Float is seperated in 4 16 bit chunks
+                        num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
+                        self.pc = self.pc+3;
+                        self.registers[reg as usize] = num;
+                        println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
+                    },
+                    VarTypes::CharType => {
+                        self.curType = VarTypes::CharType;
+                        let reg = (byteCode >> 9) & 7;
+                        self.pc = self.pc + 1;
+                        let charBit = program[self.pc];
+                        self.registers[reg as usize] = charBit as u64;
+                        println!("Char Value: {:?}", char::from_u32(charBit as u32).unwrap());
+                    }
+                    _ => panic!("Unkown Type")
+                }
             },
             OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
                 // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
@@ -185,12 +202,14 @@ pub enum OpCodes {
     /// 
     /// Next 4 bits - Destination
     OpLoadReg = 0,
-    //// OpLoadFloat - Operation Code for loading flaoats into a specified register
+    //// OpLoadScalar - Operation Code for loading scalar values into a specified register
     /// 
     /// First 4 bits - OpCode
     /// 
     /// Next 3 bits - Register
-    OpLoadFloat,
+    /// 
+    /// Last x bits - VarType
+    OpLoadScalar,
     /// OpAdd - Operation Code for adding two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 4 bits - OpCode
@@ -313,14 +332,14 @@ impl ASTConverter {
             ExprAST::NumberExpr(num) => {
                 let mut byteCode: u16 = 0;
                 //Loads Op Code
-                byteCode = byteCode | ((OpCodes::OpLoadFloat as u16) << 12);
+                byteCode = byteCode | ((OpCodes::OpLoadScalar as u16) << 12);
 
                 //Set the register to load into
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
                 //Load register into bytecode
-                byteCode = byteCode | ((register as u16) << 9);
+                byteCode = byteCode | ((register as u16) << 9) | VarTypes::FloatType as u16;
 
                 // Adds to the program list
                 self.program.push(byteCode);
@@ -336,7 +355,23 @@ impl ASTConverter {
             },
             ExprAST::CharExpr(val) => {
                 let mut byteCode: u16 = 0;
-                return  None;
+                //Loads Op Code
+                byteCode = byteCode | ((OpCodes::OpLoadScalar as u16) << 12);
+
+                //Set the register to load into
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+
+                //Load register into bytecode
+                byteCode = byteCode | ((register as u16) << 9) | VarTypes::CharType as u16;
+
+                // Adds to the program list
+                self.program.push(byteCode);
+
+                let charBits = val.as_bytes()[0];
+                self.program.push(charBits as u16);
+                self.UpdateCurType(VarTypes::CharType);
+                return Some(register); 
             }
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u16 = 0;

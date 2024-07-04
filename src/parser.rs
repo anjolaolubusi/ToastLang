@@ -279,9 +279,10 @@ impl<'a> Parser <'a>{
                 return Some(result);
             },
             Token::Char => {
-                let charValue = self.lexer.slice().parse::<String>().unwrap();
-                charValue.replace("\'", "");
+                let mut charValue = self.lexer.slice().parse::<String>().unwrap();
+                charValue = charValue.replace("\'", "");
                 let result = ExprAST::CharExpr(charValue);
+                self.getNewToken();
                 return  Some(result);
             }
             Token::OpeningParenthesis => {
@@ -306,7 +307,7 @@ impl<'a> Parser <'a>{
     }
     /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
-        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || self.current_token.unwrap() == Token::OpeningParenthesis || self.current_token.unwrap() == Token::Comma || self.current_token.unwrap() == Token::Comment || self.current_token.unwrap() == Token::MultilineCommentBegin){
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char].contains(&self.current_token.unwrap()) ){
             return self.ParsePrimaryExpr();
         }
 

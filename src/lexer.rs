@@ -36,7 +36,7 @@ pub enum Token {
     Ident,
     #[regex(r"[-]?([0-9]*)([.][0-9]+)?")]
     Number,
-    #[regex(r"\\'\w?\\'")]
+    #[regex(r"'([A-Za-z0-9])?'")]
     Char,
     #[token("+")]
     Plus,
