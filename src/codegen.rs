@@ -10,13 +10,13 @@ use num_derive::{self, FromPrimitive};
 // Holds memory of function
 #[derive(Debug)]
 pub struct MemoryBlock {
-    pub numberStack: Vec<f64>
+    pub variableLookup: HashMap<u64, (VarTypes, u64)>
 }
 
 impl MemoryBlock{
     pub fn new() -> Self{
         MemoryBlock {
-            numberStack: Vec::<f64>::new()
+            variableLookup: HashMap::new()
         }
     }
 }
@@ -88,7 +88,7 @@ impl VMCore {
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
                         self.registers[reg as usize] = charBit as u64;
-                        println!("Char Value: {:?}", char::from_u32(charBit as u32).unwrap());
+                        println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     }
                     _ => panic!("Unkown Type")
                 }
@@ -122,25 +122,25 @@ impl VMCore {
                 self.curType = varType;
             },
             OpCodes::OpNewVar => {
-                match self.curType {
-                    VarTypes::FloatType => {
-                        let reg = byteCode & 7;
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().numberStack.push(f64::from_bits(self.registers[reg as usize]));
-                    }
-                    _ => {println!("Unkown variable type")}
-                }
+                let reg = (byteCode >> 9) & 7;
+                let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
+                let variableType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x1FF).unwrap();
+                curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
             },
             OpCodes::OpLoadVar => {
-                match self.curType {
+                let reg = (byteCode >> 9) & 7;
+                let typeVal : VarTypes = num::FromPrimitive::from_u16(byteCode & 31).unwrap();
+                self.pc = self.pc + 1;
+                let mut varId: u64 = 0;
+                varId = varId | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
+                self.pc = self.pc+3;
+                self.registers[reg as usize] = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&varId).unwrap().1;
+                match typeVal {
                     VarTypes::FloatType => {
-                        let reg = (byteCode >> 9) & 7;
-                        self.pc = self.pc + 1;
-                        let mut varId: u64 = 0;
-                        varId = varId | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
-                        self.pc = self.pc+3;
-                        self.registers[reg as usize] = f64::to_bits( *self.memoryList.get(self.curMemoryId).unwrap().numberStack.get(varId as usize).unwrap() );
                         println!("Variable Value: {}", f64::from_bits(self.registers[reg as usize]))
-
+                    },
+                    VarTypes::CharType => {
+                        println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     }
                     _ => {println!("Unkown variable type")}
                 }
@@ -260,13 +260,17 @@ pub enum OpCodes {
     /// 
     /// First 4 bits - OpCode
     /// 
-    /// Last 3 bits - Reg of variable value
+    /// Next 3 bits - Reg of variable value
+    /// 
+    /// Last 9 bits - Var Type
     OpNewVar,
     //// OpLoadVar - Operation Load Variable To register
     /// 
     /// First 4 bits - OpCode
     /// 
     /// Next 3 bits - Register Num
+    /// 
+    /// Last 9 bits - Var Type
     OpLoadVar,
     //// OpStartFunc - Operation Code to Start Function Definition
     /// 
@@ -349,8 +353,7 @@ impl ASTConverter {
                 self.program.push( (floatBits >> 16 & 0xFFFF) as u16);//16-31
                 self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
                 self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
-                // self.curType = VarTypes::FloatType;
-                self.UpdateCurType(VarTypes::FloatType);
+                self.curType = VarTypes::FloatType;
                 return Some(register); 
             },
             ExprAST::CharExpr(val) => {
@@ -370,13 +373,12 @@ impl ASTConverter {
 
                 let charBits = val.as_bytes()[0];
                 self.program.push(charBits as u16);
-                self.UpdateCurType(VarTypes::CharType);
+                self.curType = VarTypes::CharType;
                 return Some(register); 
             }
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u16 = 0;
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
-                self.UpdateCurType(varIdTuple.1);
                 let varId = varIdTuple.2;
                 byteCode = byteCode | ((OpCodes::OpLoadVar as u16) << 12);
                 
@@ -384,7 +386,7 @@ impl ASTConverter {
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
-                byteCode = byteCode | ((register as u16) << 9);
+                byteCode = byteCode | ((register as u16) << 9) | varIdTuple.1 as u16;
                 self.program.push(byteCode);
 
                 self.program.push( (varId & 0xFFFF) as u16); //0-15
@@ -396,22 +398,19 @@ impl ASTConverter {
             }
             ExprAST::VariableAssignExpr { varObject, value } => {
                 let mut byteCode: u16 = 0;
-                let num_register_val: u8;
+                let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
-                    match typeName.as_str() {
-                        "number" => {
-                            // self.curType = VarTypes::FloatType;
-                            self.UpdateCurType(VarTypes::FloatType);
-                            num_register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
-                            self.varLookUp.insert(name, (self.curMemoryBlock, self.curType, self.curNumVarId));
-                            byteCode = byteCode | ((OpCodes::OpNewVar as u16) << 12) | num_register_val as u16;
-                            self.program.push(byteCode);
-                            self.curNumVarId += 1;
-                            return Some(num_register_val);
-                        },
+                    register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
+                    let valVarType = match typeName.as_str() {
+                        "number" => VarTypes::FloatType,
+                        "string" => VarTypes::CharType,
                         _ => panic!("Can not compile variable type")
-                    }
-
+                    };
+                    self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
+                    byteCode = byteCode | ((OpCodes::OpNewVar as u16) << 12) | ((register_val as u16) << 9)  | valVarType as u16;
+                    self.program.push(byteCode);
+                    self.curNumVarId += 1;
+                    return Some(register_val);                   
                     // match *value {
                     //     ExprAST::NumberExpr(num) =>  {
                     //         num_register_val = self.ConvertExprToByteCode(*value);
@@ -473,15 +472,15 @@ impl ASTConverter {
                 // Loop through arguments and load them in to the function def
                 for param in args{
                     if let ExprAST::VariableHeader { name, typeName } = param {
-                        match typeName.as_str() {
-                            "number" => {
-                                bytecode = 0 | (OpCodes::OpAddFuncParameter as u16) << 12 | (VarTypes::FloatType as u16);
-                                self.program.push(bytecode);
-                                self.varLookUp.insert(name, (self.curMemoryBlock, VarTypes::FloatType, self.curNumVarId));
-                                self.curNumVarId += 1;
-                            }
-                            _ => panic!("Can not compile data types")
-                        }
+                        let varVaribleType = match typeName.as_str() {
+                            "number" => VarTypes::FloatType,
+                            "string" => VarTypes::CharType,
+                            _ => panic!("Can not compile type")
+                            };
+                        bytecode = 0 | (OpCodes::OpAddFuncParameter as u16) << 12 | (varVaribleType as u16);
+                        self.program.push(bytecode);
+                        self.varLookUp.insert(name, (self.curMemoryBlock, varVaribleType, self.curNumVarId));
+                        self.curNumVarId += 1;
                     }
                 }
 
@@ -509,7 +508,7 @@ impl ASTConverter {
                 let mut param_reg :Option<u8> = Some(self.free_reg);
                 for param in parameters {
                     param_reg = self.ConvertExprToByteCode(param);
-                    bytecode = 0 | (OpCodes::OpNewVar as u16) << 12 | (param_reg.unwrap() as u16);
+                    bytecode = 0 | (OpCodes::OpNewVar as u16) << 12 | (param_reg.unwrap() as u16) << 9 | (self.curType as u16);
                     self.program.push(bytecode);
                 }
                 bytecode = 0 |  (OpCodes::OpEndParamLoad as u16) << 12;
@@ -518,12 +517,6 @@ impl ASTConverter {
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
-    }
-
-    pub fn UpdateCurType(&mut self, curType: VarTypes){
-        self.curType = curType;
-        let byteCode = 0 | (OpCodes::OpType as u16) << 12 | (curType as u16);
-        self.program.push(byteCode);
     }
 
 }
