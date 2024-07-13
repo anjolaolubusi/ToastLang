@@ -12,6 +12,7 @@ pub enum ExprAST {
     NumberExpr(f64),
     // Represent a char expression ast node
     CharExpr(String),
+    StringExpr(String),
     ///Represents a variable experssion ast node
     VariableExpr(String),
     VariableAssignExpr {
@@ -284,6 +285,13 @@ impl<'a> Parser <'a>{
                 let result = ExprAST::CharExpr(charValue);
                 self.getNewToken();
                 return  Some(result);
+            },
+            Token::String => {
+                let mut stringValue = self.lexer.slice().parse::<String>().unwrap();
+                stringValue = stringValue.replace("\"", "");
+                let result = ExprAST::StringExpr(stringValue);
+                self.getNewToken();
+                return  Some(result);
             }
             Token::OpeningParenthesis => {
                 self.getNewToken(); //Consumes '('
@@ -307,7 +315,7 @@ impl<'a> Parser <'a>{
     }
     /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
-        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char].contains(&self.current_token.unwrap()) ){
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char, Token::String].contains(&self.current_token.unwrap()) ){
             return self.ParsePrimaryExpr();
         }
 

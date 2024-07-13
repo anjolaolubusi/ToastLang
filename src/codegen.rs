@@ -10,13 +10,16 @@ use num_derive::{self, FromPrimitive};
 // Holds memory of function
 #[derive(Debug)]
 pub struct MemoryBlock {
-    pub variableLookup: HashMap<u64, (VarTypes, u64)>
+    pub variableLookup: HashMap<u64, (VarTypes, u64)>,
+    pub listLookup: Vec<(VarTypes, Vec<u64>)>
+    
 }
 
 impl MemoryBlock{
     pub fn new() -> Self{
         MemoryBlock {
-            variableLookup: HashMap::new()
+            variableLookup: HashMap::new(),
+            listLookup: Vec::new()
         }
     }
 }
@@ -117,10 +120,6 @@ impl VMCore {
                 let destRegNum = (byteCode >> 4) & 15;
                 self.registers[destRegNum as usize] = self.registers[sourceRegNum as usize];
             },
-            OpCodes::OpType => {
-                let varType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x0FFF).unwrap();
-                self.curType = varType;
-            },
             OpCodes::OpNewVar => {
                 let reg = (byteCode >> 9) & 7;
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
@@ -141,6 +140,12 @@ impl VMCore {
                     },
                     VarTypes::CharType => {
                         println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
+                    },
+                    VarTypes::StringType => {
+                        let arr_vec = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().1.clone();
+                        // array_vec.clone().into_iter().map(|x| x as u64).collect()
+                        let string_vec: Vec<u16> = arr_vec.into_iter().map(|x| x as u16).collect();
+                        println!("String Value: {:?}", String::from_utf16(string_vec.as_slice()).unwrap())
                     }
                     _ => {println!("Unkown variable type")}
                 }
@@ -185,6 +190,22 @@ impl VMCore {
                 self.memoryList.pop();
                 self.curMemoryId -= 1;
 
+            },
+            OpCodes::OpLoadArray => {
+                let reg = (byteCode >> 9) & 7;
+                let elementType: VarTypes = num::FromPrimitive::from_u16(byteCode & 511).unwrap();
+                let mut array_vec = Vec::<u16>::new();
+                self.pc += 1;
+                while (program[self.pc] >> 12) != (OpCodes::OpEndArray as u16) {
+                    array_vec.push(program[self.pc]);
+                    self.pc += 1;
+                }
+                self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
+                self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
+                match elementType {
+                    VarTypes::CharType => println!("String Value: {:?}", String::from_utf16(array_vec.as_slice()).unwrap()),
+                    _ => println!("Unkown Element Type")
+                }
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
@@ -250,12 +271,6 @@ pub enum OpCodes {
     /// 
     /// Next 3 bits - Second Reg
     OpDiv,
-    //// OpType - Operation Code for setting the current type
-    /// 
-    /// First 4 bits - OpCode
-    ///
-    ///  Next 12 bits - Denotes type
-    OpType,
     //// OpNewVar - Operation Code for adding a variable
     /// 
     /// First 4 bits - OpCode
@@ -294,7 +309,10 @@ pub enum OpCodes {
     /// 
     /// Last 12 bits - Function Id
     OpCallFunc,
-    OpEndParamLoad
+    OpEndParamLoad,
+    OpLoadArray,
+    OpEndArray,
+    OpPrint
 }
 
 pub struct ASTConverter {
@@ -313,7 +331,8 @@ pub struct ASTConverter {
 pub enum VarTypes{
     NullType=0,
     FloatType,
-    CharType
+    CharType,
+    StringType
 }
 
 
@@ -375,6 +394,33 @@ impl ASTConverter {
                 self.program.push(charBits as u16);
                 self.curType = VarTypes::CharType;
                 return Some(register); 
+            },
+            ExprAST::StringExpr(val) => {
+                let mut bytecode: u16 = 0;
+
+                //Set the register to load into
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+
+                bytecode = bytecode | ((OpCodes::OpLoadArray as u16) << 12) | ((register as u16) << 9) | VarTypes::CharType as u16;
+
+                // Adds to the program list
+                self.program.push(bytecode);
+                
+                let bytes_arr = val.as_bytes();
+                for i in (0..bytes_arr.len()){
+                    // bytecode = 0 | (bytes_arr[i] as u16) << 8;
+                    // if i+1 < bytes_arr.len() {
+                    //     bytecode = bytecode | bytes_arr[i+1] as u16;
+                    // }
+                    self.program.push(bytes_arr[i] as u16);
+                }
+
+                bytecode = 0 | ((OpCodes::OpEndArray as u16) << 12) ;
+                self.program.push(bytecode);
+
+                return Some(register)
+
             }
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u16 = 0;
@@ -403,7 +449,8 @@ impl ASTConverter {
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
                     let valVarType = match typeName.as_str() {
                         "number" => VarTypes::FloatType,
-                        "string" => VarTypes::CharType,
+                        "char" => VarTypes::CharType,
+                        "string" => VarTypes::StringType,
                         _ => panic!("Can not compile variable type")
                     };
                     self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
@@ -435,9 +482,14 @@ impl ASTConverter {
                 // Loads opCode and register into bytecode
                 byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
                 match *rhs {
-                    ExprAST::NumberExpr(_) => {
+                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) => {
+                        let varTypeOpr1 = self.curType;
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
+                        let varTypeOpr2 = self.curType;
+                        if varTypeOpr1 as u16 != varTypeOpr2 as u16 {
+                            panic!("Operands must match type");
+                        }
                         // Loads register to bytecode
                         byteCode = byteCode | (reg2 as u16);
                         // Pushed bytecode to program list
@@ -500,7 +552,7 @@ impl ASTConverter {
             ExprAST::CallExpr { func_name, parameters } => {
                 let funcIdOption = self.funcIdTable.get(&func_name);
                 let mut bytecode: u16;
-                if funcIdOption.is_none() {
+                if funcIdOption.is_none() || func_name != "print" {
                     println!("Function {:#?} Not found", func_name.as_str());
                 }
                 bytecode = 0 | (OpCodes::OpCallFunc as u16) << 12 | (*funcIdOption.unwrap()) as u16;

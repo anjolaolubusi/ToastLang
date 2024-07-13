@@ -36,6 +36,8 @@ pub enum Token {
     Ident,
     #[regex(r"[-]?([0-9]*)([.][0-9]+)?")]
     Number,
+    #[regex("\"([A-Za-z0-9\\s])*\"")]
+    String,
     #[regex(r"'([A-Za-z0-9])?'")]
     Char,
     #[token("+")]
@@ -249,6 +251,16 @@ mod tests {
         {
             let correct_token = Token::VarDeclare;
             let mut lex = Token::lexer("let");
+            assert_eq!(lex.next(), Some(correct_token));
+        };
+    }
+
+
+    #[test]
+    fn lex_string(){
+        {
+            let correct_token = Token::String;
+            let mut lex = Token::lexer("\"Hello World\"");
             assert_eq!(lex.next(), Some(correct_token));
         };
     }
