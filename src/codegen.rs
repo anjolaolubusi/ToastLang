@@ -112,6 +112,18 @@ impl VMCore {
                         }
                         println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]))
                     },
+                    VarTypes::StringType => {
+                        let reg2 = byteCode & 7;
+                        match opCode {
+                            OpCodes::OpAdd => {
+                                let currMemoryList = self.memoryList.get(self.curMemoryId).unwrap();
+                                let mut left_arr = currMemoryList.listLookup.get(self.registers[reg1 as usize] as usize).unwrap().1.clone();
+                                let mut right_arr = currMemoryList.listLookup.get(self.registers[reg2 as usize] as usize).unwrap().1.clone();
+                                println!("{:?}", left_arr.append(&mut right_arr));
+                            }
+                            _ => {print!("Unkown Operation")}
+                        }
+                    },
                     _ => {println!("Unkown number type")}
                 }
             },
@@ -192,6 +204,7 @@ impl VMCore {
 
             },
             OpCodes::OpLoadArray => {
+                self.curType = VarTypes::ArrayType;
                 let reg = (byteCode >> 9) & 7;
                 let elementType: VarTypes = num::FromPrimitive::from_u16(byteCode & 511).unwrap();
                 let mut array_vec = Vec::<u16>::new();
@@ -203,7 +216,7 @@ impl VMCore {
                 self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
                 match elementType {
-                    VarTypes::CharType => println!("String Value: {:?}", String::from_utf16(array_vec.as_slice()).unwrap()),
+                    VarTypes::CharType => {self.curType = VarTypes::StringType; println!("String Value: {:?}", String::from_utf16(array_vec.as_slice()).unwrap())},
                     _ => println!("Unkown Element Type")
                 }
             }
@@ -332,7 +345,8 @@ pub enum VarTypes{
     NullType=0,
     FloatType,
     CharType,
-    StringType
+    StringType,
+    ArrayType,
 }
 
 
@@ -418,6 +432,7 @@ impl ASTConverter {
 
                 bytecode = 0 | ((OpCodes::OpEndArray as u16) << 12) ;
                 self.program.push(bytecode);
+                self.curType = VarTypes::StringType;
 
                 return Some(register)
 
@@ -482,7 +497,7 @@ impl ASTConverter {
                 // Loads opCode and register into bytecode
                 byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
                 match *rhs {
-                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) => {
+                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) => {
                         let varTypeOpr1 = self.curType;
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
@@ -502,7 +517,8 @@ impl ASTConverter {
                         byteCode = byteCode | (0 << 8) | (binExprReg as u16);
                         self.program.push(byteCode);
                         return Some(reg1);
-                    }
+                    },
+                    // dfff
                     _ => {return None;}
                 }
             },
@@ -552,7 +568,7 @@ impl ASTConverter {
             ExprAST::CallExpr { func_name, parameters } => {
                 let funcIdOption = self.funcIdTable.get(&func_name);
                 let mut bytecode: u16;
-                if funcIdOption.is_none() || func_name != "print" {
+                if funcIdOption.is_none() {
                     println!("Function {:#?} Not found", func_name.as_str());
                 }
                 bytecode = 0 | (OpCodes::OpCallFunc as u16) << 12 | (*funcIdOption.unwrap()) as u16;
