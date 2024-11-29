@@ -107,6 +107,7 @@ impl<'a> Parser <'a>{
         BinOp.insert("*".to_string(), 40);
         BinOp.insert("/".to_string(), 30);
         BinOp.insert("=".to_string(), 10);
+        BinOp.insert("[".to_string(), 50);
 
         let skipToken = [Token::WhiteSpace].to_vec();
         Parser {
@@ -302,6 +303,16 @@ impl<'a> Parser <'a>{
                 self.getNewToken(); //Consumes ')'
                 return Some(expr);
             },
+            Token::OpenSquareBracket => {
+                self.getNewToken(); // Consumes '['
+                let expr = self.ParseExpr().expect("Could not parse expression within square bracket");
+                if self.current_token.unwrap() != Token::CloseSquareBracket {
+                    return self.LogError("Expected a ']' here");
+                }
+                self.getNewToken(); //Consumes ']'
+                return Some(expr);
+
+            },
             Token::If => self.ParseIfElseExpr(),
             Token::For => self.ParseForExpr(),
             Token::Comment => self.ParseSingleLineComment(),
@@ -315,7 +326,7 @@ impl<'a> Parser <'a>{
     }
     /// Parses unary expression
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
-        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char, Token::String].contains(&self.current_token.unwrap()) ){
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char, Token::String, Token::OpenSquareBracket].contains(&self.current_token.unwrap()) ){
             return self.ParsePrimaryExpr();
         }
 
@@ -392,22 +403,36 @@ impl<'a> Parser <'a>{
             return LHS;
         }
 
-        let mut BinOp = self.current_token;
+        let mut BinOp : Option<Token>;
         let charBinOp = self.lexer.slice();
         
         if(self.GetTokPrecedence() == -1){
             return  self.LogError("Unkown Operator");
         }
 
-        if(!"+-/*<>=".contains(self.lexer.slice())){
-            BinOp = Some(Token::CustomBinOp);
+        match self.lexer.slice() {
+            "+" | "-" | "/" | "*" | "<"| ">" | "=" | "[" => {
+                BinOp = self.current_token;
+            }
+            _ => {
+                BinOp = Some(Token::CustomBinOp);
+            }
         }
+
         self.getNewToken();
         
         let mut RHS = self.ParseUnaryExpr();
 
         if RHS.is_none() {
             return self.LogError("Empty Right Hand of Equation");
+        }
+
+        if BinOp.unwrap() == Token::OpenSquareBracket {
+            if self.current_token.unwrap() == Token::CloseSquareBracket {
+                self.getNewToken();
+            }else{
+                self.LogError("Expected a ']' here");
+            }
         }
 
         let NextPrec = self.GetTokPrecedence();
@@ -421,7 +446,9 @@ impl<'a> Parser <'a>{
         //Fix
         let LHS_BOX: Box<ExprAST> = Box::new(LHS.unwrap());
         let RHS_BOX: Box<ExprAST> = Box::new(RHS.unwrap());
-        LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX, opChar: charBinOp.to_string() })
+        LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX, opChar: charBinOp.to_string() });
+        println!("{:?}", LHS);
+        return LHS;
         }
     }
 

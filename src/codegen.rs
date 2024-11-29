@@ -325,7 +325,8 @@ pub enum OpCodes {
     OpEndParamLoad,
     OpLoadArray,
     OpEndArray,
-    OpPrint
+    OpPrint,
+    OpAccessElement
 }
 
 pub struct ASTConverter {

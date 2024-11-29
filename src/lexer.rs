@@ -76,7 +76,11 @@ pub enum Token {
     #[error]
     Error,
     #[token("let")]
-    VarDeclare
+    VarDeclare,
+    #[token("[")]
+    OpenSquareBracket,
+    #[token("]")]
+    CloseSquareBracket
 }
 
 mod tests {

@@ -17,6 +17,7 @@ macro_rules! print_flush {
 }
 
 fn main() {
+    env::set_var("RUST_BACKTRACE", "1");
     let mut buffer = "".to_string();
     let args: Vec<String> = env::args().collect();
     // let mut cpu: ToastVM = ToastVM::new();
