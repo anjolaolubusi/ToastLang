@@ -256,6 +256,8 @@ pub enum OpCodes {
     /// 
     /// First 8 bits - OpCode
     /// 
+    /// ------------------
+    /// 
     /// Next 4 bits - Source 
     /// 
     /// Next 4 bits - Destination
@@ -264,6 +266,8 @@ pub enum OpCodes {
     /// 
     /// First 8 bits - OpCode
     /// 
+    /// --------------
+    /// 
     /// Next 3 bits - Register
     /// 
     /// Last x bits - VarType
@@ -271,7 +275,9 @@ pub enum OpCodes {
     /// OpAdd - Operation Code for adding two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 8 bits - OpCode
-    /// 
+    ///
+    /// -----------------------
+    ///  
     /// Next 3 bits - First Reg
     /// 
     /// Next bit - Null
@@ -281,6 +287,8 @@ pub enum OpCodes {
     /// OpSub- Operation Code for subtracting two numbers that are either in two registers or in the op-code bytecode
     /// 
     /// First 8 bits - OpCode
+    /// 
+    /// ---------------------
     /// 
     /// Next 3 bits - First Reg
     /// 
@@ -292,6 +300,8 @@ pub enum OpCodes {
     /// 
     /// First 8 bits - OpCode
     /// 
+    /// ---------------------
+    /// 
     /// Next 3 bits - First Reg
     /// 
     /// Next bit - Null
@@ -302,6 +312,8 @@ pub enum OpCodes {
     /// 
     /// First 8 bits - OpCode
     /// 
+    /// ---------------------
+    /// 
     /// Next 3 bits - First Reg
     /// 
     /// Next bit - Null
@@ -310,7 +322,11 @@ pub enum OpCodes {
     OpDiv,
     //// OpNewVar - Operation Code for adding a variable
     /// 
+    /// ---------------------
+    /// 
     /// First 8 bits - OpCode
+    /// 
+    /// ---------------------
     /// 
     /// Next 3 bits - Reg of variable value
     /// 
@@ -318,36 +334,51 @@ pub enum OpCodes {
     OpNewVar,
     //// OpLoadVar - Operation Load Variable To register
     /// 
-    /// First 4 bits - OpCode
+    /// ---------------------
+    /// 
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - Register Num
     /// 
-    /// Last 9 bits - Var Type
+    /// Last 5 bits - Var Type
     OpLoadVar,
     //// OpStartFunc - Operation Code to Start Function Definition
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
-    /// Last 12 bits - Number of parameters
+    /// Next 8 bits - Number of parameters
     OpStartFunc,
     //// OpAddFuncParameter - Operation Code to Add Function Parameter
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
-    /// Last 12 bits - VarType
+    /// Next 8 bits - VarType
     OpAddFuncParameter,
     //// OpEndFunc - Operation Code to Start Function Definition
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     OpEndFunc,
     //// OpCallFunc - Operation Code to call functiomn
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
-    /// Last 12 bits - Function Id
+    /// Next 64 bits - Function Id
     OpCallFunc,
+    //// OpEndFunc - Operation Code to Declare End of Param Load
+    /// 
+    /// First 8 bits - OpCode
     OpEndParamLoad,
+    //// OpEndFunc - Operation Code to start array load
+    /// 
+    /// First 8 bits - OpCode
+    /// 
+    /// Next 3 bits - Register
+    /// 
+    /// Last 5 bits - Element Type
     OpLoadArray,
+    //// OpEndFunc - Operation Code to Declare End of array load
+    /// 
+    /// First 8 bits - OpCode
     OpEndArray,
     OpPrint,
     OpAccessElement
@@ -457,10 +488,6 @@ impl ASTConverter {
                 
                 let bytes_arr = val.as_bytes();
                 for i in (0..bytes_arr.len()){
-                    // bytecode = 0 | (bytes_arr[i] as u16) << 8;
-                    // if i+1 < bytes_arr.len() {
-                    //     bytecode = bytecode | bytes_arr[i+1] as u16;
-                    // }
                     self.program.push(bytes_arr[i] as u8);
                 }
 
@@ -491,11 +518,6 @@ impl ASTConverter {
                     self.program.push( ((varId >> shift) & 0xFF) as u8);    
                 }
 
-                // self.program.push( (varId & 0xFFFF) as u16); //0-15
-                // self.program.push( (varId >> 16 & 0xFFFF) as u16);//16-31
-                // self.program.push( ((varId >> 32 & 0xFFFF)) as u16); //31-47
-                // self.program.push( ((varId >> 48 & 0xFFFF)) as u16); //48-63
-
                 return Some(register);
             }
             ExprAST::VariableAssignExpr { varObject, value } => {
@@ -516,13 +538,7 @@ impl ASTConverter {
                     byteCode = byteCode | ((register_val as u8) << 5)  | valVarType as u8;
                     self.program.push(byteCode);
                     self.curNumVarId += 1;
-                    return Some(register_val);                   
-                    // match *value {
-                    //     ExprAST::NumberExpr(num) =>  {
-                    //         num_register_val = self.ConvertExprToByteCode(*value);
-                    //     },
-                    //     _ => panic!("Can not compile variable value")
-                    // }
+                    return Some(register_val);
                 }
                 return None;
             }
@@ -619,6 +635,7 @@ impl ASTConverter {
                 return Some(lastReg);
             },
             ExprAST::CallExpr { func_name, parameters } => {
+                //Grabs function Id and loads it
                 let funcIdOption = self.funcIdTable.get(&func_name);
                 let mut bytecode: u8;
                 if funcIdOption.is_none() {
@@ -633,6 +650,7 @@ impl ASTConverter {
                     self.program.push( ((funcId >> shift) & 0xFF) as u8);    
                 }
 
+                //Loads function paramters
                 let mut param_reg :Option<u8> = Some(self.free_reg);
                 for param in parameters {
                     param_reg = self.ConvertExprToByteCode(param);
