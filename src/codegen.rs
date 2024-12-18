@@ -4,7 +4,7 @@ use std::{collections::HashMap, u16};
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
-use num;
+use num::{self, range};
 use num_derive::{self, FromPrimitive};
 
 // Holds memory of function
@@ -55,7 +55,7 @@ impl VMCore {
         return vm;
     }
 
-    pub fn processProgram(&mut self, program: &Vec<u16>){
+    pub fn processProgram(&mut self, program: &Vec<u8>){
         let mut byteCode;
         while self.pc < program.len(){
             byteCode = program[self.pc];
@@ -64,30 +64,33 @@ impl VMCore {
         }
     }
 
-    pub fn ConsumeByteCode(&mut self, program: &Vec<u16>, byteCode: u16){
-        let opCode : OpCodes = num::FromPrimitive::from_u16(byteCode >> 12).unwrap();
+    pub fn ConsumeByteCode(&mut self, program: &Vec<u8>, mut byteCode: u8){
+        let opCode : OpCodes = num::FromPrimitive::from_u8(byteCode).unwrap();
         match opCode {
             OpCodes::OpLoadScalar => {
                 // Add check for Scalar Type
                 // Determine action based on scalar type
-
-                let curType: VarTypes = num::FromPrimitive::from_u16((byteCode & 0x00FF)).unwrap();
+                self.pc += 1;
+                byteCode = program[self.pc];
+                // Only grabs the first 5 bits (31 is all first 5 bits as one) of the bytecode since that is where the current value type is
+                let curType: VarTypes = num::FromPrimitive::from_u8((byteCode & 31)).unwrap();
                 match curType {
                     VarTypes::FloatType => {
                         self.curType = VarTypes::FloatType;
                         // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
-                        let reg = (byteCode >> 9) & 7;
-                        self.pc = self.pc + 1;
+                        let reg = (byteCode >> 5) & 7;
                         let mut num: u64 = 0;
                         //Float is seperated in 4 16 bit chunks
-                        num = num | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
-                        self.pc = self.pc+3;
+                        for i in range(0, 8){
+                            self.pc += 1;
+                            num = (num << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
+                        }
                         self.registers[reg as usize] = num;
                         println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
                     },
                     VarTypes::CharType => {
                         self.curType = VarTypes::CharType;
-                        let reg = (byteCode >> 9) & 7;
+                        let reg = (byteCode >> 5) & 7;
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
                         self.registers[reg as usize] = charBit as u64;
@@ -98,7 +101,9 @@ impl VMCore {
             },
             OpCodes::OpAdd | OpCodes::OpSub | OpCodes::OpDiv | OpCodes::OpMul => {
                 // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
-                let reg1 = (byteCode >> 9) & 7;
+                self.pc += 1;
+                byteCode = program[self.pc];
+                let reg1 = (byteCode >> 5) & 7;
                 match self.curType {
                     VarTypes::FloatType => {
                         // Mask bytecode by 7 (00000111)
@@ -117,9 +122,10 @@ impl VMCore {
                         match opCode {
                             OpCodes::OpAdd => {
                                 let currMemoryList = self.memoryList.get(self.curMemoryId).unwrap();
-                                let mut left_arr = currMemoryList.listLookup.get(self.registers[reg1 as usize] as usize).unwrap().1.clone();
-                                let mut right_arr = currMemoryList.listLookup.get(self.registers[reg2 as usize] as usize).unwrap().1.clone();
-                                println!("{:?}", left_arr.append(&mut right_arr));
+                                let right_arr : Vec<u8> = currMemoryList.listLookup.get(self.registers[reg1 as usize] as usize).unwrap().1.clone().into_iter().map(|x| x as u8).collect();
+                                let left_arr : Vec<u8> = currMemoryList.listLookup.get(self.registers[reg2 as usize] as usize).unwrap().1.clone().into_iter().map(|x| x as u8).collect();
+                                let arr: Vec<u8> = [left_arr, right_arr].concat();
+                                println!("{:?}", String::from_utf8(arr).unwrap());
                             }
                             _ => {print!("Unkown Operation")}
                         }
@@ -128,23 +134,28 @@ impl VMCore {
                 }
             },
             OpCodes::OpLoadReg => {
-                let sourceRegNum = (byteCode >> 8) & 15;
-                let destRegNum = (byteCode >> 4) & 15;
+                let sourceRegNum = (byteCode >> 5) & 15;
+                let destRegNum = (byteCode) & 7;
                 self.registers[destRegNum as usize] = self.registers[sourceRegNum as usize];
             },
             OpCodes::OpNewVar => {
-                let reg = (byteCode >> 9) & 7;
+                self.pc += 1;
+                let reg = (program[self.pc] >> 5) & 7;
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
-                let variableType: VarTypes = num::FromPrimitive::from_u16(byteCode & 0x1FF).unwrap();
+                let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x1F)).unwrap();
                 curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
             },
             OpCodes::OpLoadVar => {
-                let reg = (byteCode >> 9) & 7;
-                let typeVal : VarTypes = num::FromPrimitive::from_u16(byteCode & 31).unwrap();
-                self.pc = self.pc + 1;
+                self.pc += 1;
+                let reg = (program[self.pc]  >> 5) & 7;
+                let typeVal : VarTypes = num::FromPrimitive::from_u8(program[self.pc]  & 31).unwrap();
                 let mut varId: u64 = 0;
-                varId = varId | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
-                self.pc = self.pc+3;
+                for i in range(0, 8){
+                    self.pc += 1;
+                    varId = (varId << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
+                }
+                // varId = varId | program[self.pc] as u64 | (program[self.pc+1] as u64) << 16 | (program[self.pc+2] as u64) << 32 | (program[self.pc+3] as u64) << 48;
+                // self.pc = self.pc+3;
                 self.registers[reg as usize] = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&varId).unwrap().1;
                 match typeVal {
                     VarTypes::FloatType => {
@@ -163,18 +174,22 @@ impl VMCore {
                 }
             },
             OpCodes::OpStartFunc => {
-                let param_num = byteCode & 0x0FFF;
+                self.pc += 1;
+                let param_num = program[self.pc];
                 println!("Para Number is {param_num}");
                 let mut paramTypes = Vec::<VarTypes>::new();
                 for _ in 0..param_num{
                     self.pc = self.pc + 1;
-                    let varType : VarTypes = num::FromPrimitive::from_u16(program[self.pc] & 0x0FFF).unwrap();
-                    paramTypes.push(varType);
+                    if program[self.pc] == OpCodes::OpAddFuncParameter as u8 {
+                        self.pc = self.pc + 1;
+                        let varType : VarTypes = num::FromPrimitive::from_u8(program[self.pc]).unwrap();
+                        paramTypes.push(varType);
+                    }
                 }
                 self.pc += 1;
                 let startPCval = self.pc;
                 self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone()));
-                while program[self.pc] >> 12 != (OpCodes::OpEndFunc as u16) {
+                while program[self.pc] != (OpCodes::OpEndFunc as u8) {
                     self.pc += 1;
                 }
                 self.curFunctionId += 1;
@@ -183,18 +198,22 @@ impl VMCore {
                 
             },
             OpCodes::OpCallFunc => {
-                let function_id = byteCode & 0x0FFF;
+                let mut function_id = 0;
+                for i in range(0, 8){
+                    self.pc += 1;
+                    function_id = (function_id << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
+                }
                 let func_data = self.funcList.get(&(function_id as usize)).unwrap_or_else(|| {panic!("Unkown function")}).clone();
                 self.pc += 1;
                 self.memoryList.push(MemoryBlock::new());
                 self.curMemoryId += 1;
-                while (program[self.pc] >> 12) != OpCodes::OpEndParamLoad as u16 {
+                while program[self.pc] != OpCodes::OpEndParamLoad as u8{
                     self.ConsumeByteCode(program, program[self.pc]);
                     self.pc += 1;
                 }
                 let oldPC = self.pc;
                 self.pc = func_data.0;
-                while (program[self.pc] >> 12)  != (OpCodes::OpEndFunc as u16) {
+                while program[self.pc]  != (OpCodes::OpEndFunc as u8) {
                     self.ConsumeByteCode(program, program[self.pc]);
                     self.pc += 1;
                 }
@@ -205,18 +224,20 @@ impl VMCore {
             },
             OpCodes::OpLoadArray => {
                 self.curType = VarTypes::ArrayType;
-                let reg = (byteCode >> 9) & 7;
-                let elementType: VarTypes = num::FromPrimitive::from_u16(byteCode & 511).unwrap();
-                let mut array_vec = Vec::<u16>::new();
+                let reg = (byteCode >> 5) & 7;
                 self.pc += 1;
-                while (program[self.pc] >> 12) != (OpCodes::OpEndArray as u16) {
+                byteCode = program[self.pc];
+                let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & 31).unwrap();
+                let mut array_vec = Vec::<u8>::new();
+                self.pc += 1;
+                while (program[self.pc] != OpCodes::OpEndArray as u8) {
                     array_vec.push(program[self.pc]);
                     self.pc += 1;
                 }
                 self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
                 match elementType {
-                    VarTypes::CharType => {self.curType = VarTypes::StringType; println!("String Value: {:?}", String::from_utf16(array_vec.as_slice()).unwrap())},
+                    VarTypes::CharType => {self.curType = VarTypes::StringType; println!("String Value: {:?}", String::from_utf8(array_vec).unwrap())},
                     _ => println!("Unkown Element Type")
                 }
             }
@@ -230,7 +251,7 @@ impl VMCore {
 pub enum OpCodes {
     /// OpLoadReg - Operation Code for copy data from register to another
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 4 bits - Source 
     /// 
@@ -238,7 +259,7 @@ pub enum OpCodes {
     OpLoadReg = 0,
     //// OpLoadScalar - Operation Code for loading scalar values into a specified register
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - Register
     /// 
@@ -246,51 +267,51 @@ pub enum OpCodes {
     OpLoadScalar,
     /// OpAdd - Operation Code for adding two numbers that are either in two registers or in the op-code bytecode
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - First Reg
     /// 
-    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Next bit - Null
     /// 
     /// Next 3 bits - Second Reg
     OpAdd,
     /// OpSub- Operation Code for subtracting two numbers that are either in two registers or in the op-code bytecode
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - First Reg
     /// 
-    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Next bit - Null
     /// 
     /// Next 3 bits - Second Reg
     OpSub,
     /// OpMul- Operation Code for multiplying two numbers that are either in two registers or in the op-code bytecode
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - First Reg
     /// 
-    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Next bit - Null
     /// 
     /// Next 3 bits - Second Reg
     OpMul,
     /// OpDiv- Operation Code for dividing two numbers that are either in two registers or in the op-code bytecode
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - First Reg
     /// 
-    /// Next bit - 1 if Immediate mode else Multiple byte mode
+    /// Next bit - Null
     /// 
     /// Next 3 bits - Second Reg
     OpDiv,
     //// OpNewVar - Operation Code for adding a variable
     /// 
-    /// First 4 bits - OpCode
+    /// First 8 bits - OpCode
     /// 
     /// Next 3 bits - Reg of variable value
     /// 
-    /// Last 9 bits - Var Type
+    /// Last 5 bits - Var Type
     OpNewVar,
     //// OpLoadVar - Operation Load Variable To register
     /// 
@@ -333,7 +354,7 @@ pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u64>,
     // Key is variable name, Value is (Memory Block, VarType, Variable Id)
     pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
-    pub program: Vec<u16>,
+    pub program: Vec<u8>,
     pub curType: VarTypes,
     pub curMemoryBlock: u128,
     pub curNumVarId: u64,
@@ -356,7 +377,7 @@ impl ASTConverter {
         ASTConverter{
             funcIdTable: HashMap::new(),
             varLookUp: HashMap::new(),
-            program: Vec::<u16>::new(),
+            program: Vec::<u8>::new(),
             curType: VarTypes::FloatType,
             curMemoryBlock: 0,
             curNumVarId: 0,
@@ -368,56 +389,65 @@ impl ASTConverter {
     pub fn ConvertExprToByteCode(&mut self, expr: ExprAST) -> Option<u8> {
         match expr {
             ExprAST::NumberExpr(num) => {
-                let mut byteCode: u16 = 0;
+                let mut byteCode: u8 = 0;
                 //Loads Op Code
-                byteCode = byteCode | ((OpCodes::OpLoadScalar as u16) << 12);
+                byteCode = byteCode | ((OpCodes::OpLoadScalar as u8) );
+                self.program.push(byteCode);
 
+                let mut byteCode: u8 = 0;
                 //Set the register to load into
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
                 //Load register into bytecode
-                byteCode = byteCode | ((register as u16) << 9) | VarTypes::FloatType as u16;
+                byteCode = byteCode | ((register as u8) << 5) | VarTypes::FloatType as u8;
 
                 // Adds to the program list
                 self.program.push(byteCode);
 
                 let floatBits = f64::to_bits(num);
-                self.program.push( (floatBits & 0xFFFF) as u16); //0-15
-                self.program.push( (floatBits >> 16 & 0xFFFF) as u16);//16-31
-                self.program.push( ((floatBits >> 32 & 0xFFFF)) as u16); //31-47
-                self.program.push( ((floatBits >> 48 & 0xFFFF)) as u16); //48-63
+                for i in range(0, 8){
+                    let shift: u8 = 56 - 8*i;
+                    self.program.push( ((floatBits >> shift) & 0xFF) as u8);    
+                }
+
                 self.curType = VarTypes::FloatType;
                 return Some(register); 
             },
             ExprAST::CharExpr(val) => {
-                let mut byteCode: u16 = 0;
+                let mut byteCode: u8 = 0;
                 //Loads Op Code
-                byteCode = byteCode | ((OpCodes::OpLoadScalar as u16) << 12);
+                byteCode = byteCode | ((OpCodes::OpLoadScalar as u8) );
+                self.program.push(byteCode);
 
+                let mut byteCode: u8 = 0;
                 //Set the register to load into
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
                 //Load register into bytecode
-                byteCode = byteCode | ((register as u16) << 9) | VarTypes::CharType as u16;
+                byteCode = byteCode | ((register as u8) << 5) | VarTypes::CharType as u8;
 
                 // Adds to the program list
                 self.program.push(byteCode);
 
                 let charBits = val.as_bytes()[0];
-                self.program.push(charBits as u16);
+                self.program.push(charBits);
                 self.curType = VarTypes::CharType;
                 return Some(register); 
             },
             ExprAST::StringExpr(val) => {
-                let mut bytecode: u16 = 0;
+                let mut bytecode: u8 = 0;
 
                 //Set the register to load into
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
-                bytecode = bytecode | ((OpCodes::OpLoadArray as u16) << 12) | ((register as u16) << 9) | VarTypes::CharType as u16;
+                // bytecode = bytecode | ((OpCodes::OpLoadArray as u16) << 12) | ((register as u16) << 9) | VarTypes::CharType as u16;
+                bytecode = bytecode | (OpCodes::OpLoadArray as u8);
+                self.program.push(bytecode);
+                bytecode = 0;
+                bytecode = bytecode | (register << 5) | VarTypes::CharType as u8;
 
                 // Adds to the program list
                 self.program.push(bytecode);
@@ -428,10 +458,10 @@ impl ASTConverter {
                     // if i+1 < bytes_arr.len() {
                     //     bytecode = bytecode | bytes_arr[i+1] as u16;
                     // }
-                    self.program.push(bytes_arr[i] as u16);
+                    self.program.push(bytes_arr[i] as u8);
                 }
 
-                bytecode = 0 | ((OpCodes::OpEndArray as u16) << 12) ;
+                bytecode = 0 | (OpCodes::OpEndArray as u8);
                 self.program.push(bytecode);
                 self.curType = VarTypes::StringType;
 
@@ -439,27 +469,34 @@ impl ASTConverter {
 
             }
             ExprAST::VariableExpr(name) => {
-                let mut byteCode: u16 = 0;
+                let mut byteCode: u8 = 0;
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
                 let varId = varIdTuple.2;
-                byteCode = byteCode | ((OpCodes::OpLoadVar as u16) << 12);
+                byteCode = byteCode | OpCodes::OpLoadVar as u8;
+                self.program.push(byteCode);
+                byteCode = 0;
                 
                 //Set the register to load into
                 let register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
-                byteCode = byteCode | ((register as u16) << 9) | varIdTuple.1 as u16;
+                byteCode = byteCode | ((register as u8) << 5) | varIdTuple.1 as u8;
                 self.program.push(byteCode);
 
-                self.program.push( (varId & 0xFFFF) as u16); //0-15
-                self.program.push( (varId >> 16 & 0xFFFF) as u16);//16-31
-                self.program.push( ((varId >> 32 & 0xFFFF)) as u16); //31-47
-                self.program.push( ((varId >> 48 & 0xFFFF)) as u16); //48-63
+                for i in range(0, 8){
+                    let shift: u8 = 56 - 8*i;
+                    self.program.push( ((varId >> shift) & 0xFF) as u8);    
+                }
+
+                // self.program.push( (varId & 0xFFFF) as u16); //0-15
+                // self.program.push( (varId >> 16 & 0xFFFF) as u16);//16-31
+                // self.program.push( ((varId >> 32 & 0xFFFF)) as u16); //31-47
+                // self.program.push( ((varId >> 48 & 0xFFFF)) as u16); //48-63
 
                 return Some(register);
             }
             ExprAST::VariableAssignExpr { varObject, value } => {
-                let mut byteCode: u16 = 0;
+                let mut byteCode: u8 = 0;
                 let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
@@ -470,7 +507,10 @@ impl ASTConverter {
                         _ => panic!("Can not compile variable type")
                     };
                     self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
-                    byteCode = byteCode | ((OpCodes::OpNewVar as u16) << 12) | ((register_val as u16) << 9)  | valVarType as u16;
+                    byteCode = byteCode | OpCodes::OpNewVar as u8;
+                    self.program.push(byteCode);
+                    byteCode =  0;
+                    byteCode = byteCode | ((register_val as u8) << 5)  | valVarType as u8;
                     self.program.push(byteCode);
                     self.curNumVarId += 1;
                     return Some(register_val);                   
@@ -486,7 +526,7 @@ impl ASTConverter {
             ExprAST::BinaryExpr { op, lhs, rhs, opChar: _ } => {
                 // Gets register for the left hand side
                 let reg1 = self.ConvertExprToByteCode(*lhs).unwrap();
-                let mut byteCode : u16 = 0;
+                let mut byteCode : u8 = 0;
                 // Gets right op code for operation
                 let opCode : u8 = match op {
                     Token::Plus => OpCodes::OpAdd as u8,
@@ -495,8 +535,7 @@ impl ASTConverter {
                     Token::Divide => OpCodes::OpDiv as u8,
                     _ => 0 as u8
                 };
-                // Loads opCode and register into bytecode
-                byteCode = byteCode | (opCode as u16) << 12 | ( (reg1 as u16) << 9);
+
                 match *rhs {
                     ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) => {
                         let varTypeOpr1 = self.curType;
@@ -506,8 +545,13 @@ impl ASTConverter {
                         if varTypeOpr1 as u16 != varTypeOpr2 as u16 {
                             panic!("Operands must match type");
                         }
+                        // Loads opCode and register into bytecode
+                        byteCode = byteCode | opCode;
+                        self.program.push(byteCode);
+                        byteCode = 0;
+                        byteCode = ( (reg1 as u8) << 5);
                         // Loads register to bytecode
-                        byteCode = byteCode | (reg2 as u16);
+                        byteCode = byteCode | (reg2 as u8);
                         // Pushed bytecode to program list
                         self.program.push(byteCode);
                         return Some(reg1);
@@ -515,7 +559,7 @@ impl ASTConverter {
                     ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
                         let binExpr = ExprAST::BinaryExpr { op: op, lhs: lhs, rhs: rhs, opChar: opChar };
                         let binExprReg = self.ConvertExprToByteCode(binExpr).unwrap();
-                        byteCode = byteCode | (0 << 8) | (binExprReg as u16);
+                        byteCode = byteCode | binExprReg;
                         self.program.push(byteCode);
                         return Some(reg1);
                     },
@@ -524,7 +568,7 @@ impl ASTConverter {
                 }
             },
             ExprAST::FuncExpr { name, args, body } => {
-                let mut bytecode: u16 = 0;
+                let mut bytecode: u8 = 0;
                 let oldMemoryBlockId = self.curMemoryBlock;
                 let oldNumVarId = self.curNumVarId;
                 let oldVarLookup = self.varLookUp.clone();
@@ -534,9 +578,11 @@ impl ASTConverter {
                 // Insert Function Name with funcID
                 self.funcIdTable.insert(name, self.curFuncId);
                 self.curFuncId = self.curFuncId + 1;
-                let param_count = (args.len() as u16);
-                bytecode = bytecode  | (OpCodes::OpStartFunc as u16) << 12 | param_count;
+                let param_count = (args.len() as u8);
+                // bytecode = bytecode  | (OpCodes::OpStartFunc as u16) << 12 | param_count;
+                bytecode = OpCodes::OpStartFunc as u8;
                 self.program.push(bytecode);
+                self.program.push(param_count);
 
                 // Loop through arguments and load them in to the function def
                 for param in args{
@@ -546,7 +592,10 @@ impl ASTConverter {
                             "string" => VarTypes::CharType,
                             _ => panic!("Can not compile type")
                             };
-                        bytecode = 0 | (OpCodes::OpAddFuncParameter as u16) << 12 | (varVaribleType as u16);
+                        bytecode = 0; 
+                        bytecode = bytecode | (OpCodes::OpAddFuncParameter as u8);
+                        self.program.push(bytecode);
+                        bytecode = 0 | (varVaribleType as u8);
                         self.program.push(bytecode);
                         self.varLookUp.insert(name, (self.curMemoryBlock, varVaribleType, self.curNumVarId));
                         self.curNumVarId += 1;
@@ -559,7 +608,7 @@ impl ASTConverter {
                     lastReg = self.ConvertExprToByteCode(bodyExpr).unwrap();
                 }
                 // Add FuncEnd part
-                bytecode = 0 | (OpCodes::OpEndFunc as u16) << 12;
+                bytecode = 0 | (OpCodes::OpEndFunc as u8);
                 self.program.push(bytecode);
                 self.curMemoryBlock = oldMemoryBlockId;
                 self.curNumVarId = oldNumVarId;
@@ -568,19 +617,28 @@ impl ASTConverter {
             },
             ExprAST::CallExpr { func_name, parameters } => {
                 let funcIdOption = self.funcIdTable.get(&func_name);
-                let mut bytecode: u16;
+                let mut bytecode: u8;
                 if funcIdOption.is_none() {
                     println!("Function {:#?} Not found", func_name.as_str());
                 }
-                bytecode = 0 | (OpCodes::OpCallFunc as u16) << 12 | (*funcIdOption.unwrap()) as u16;
+                bytecode = 0 | (OpCodes::OpCallFunc as u8);
                 self.program.push(bytecode);
+                let funcId = (*funcIdOption.unwrap());
+                
+                for i in range(0, 8){
+                    let shift: u8 = 56 - 8*i;
+                    self.program.push( ((funcId >> shift) & 0xFF) as u8);    
+                }
+
                 let mut param_reg :Option<u8> = Some(self.free_reg);
                 for param in parameters {
                     param_reg = self.ConvertExprToByteCode(param);
-                    bytecode = 0 | (OpCodes::OpNewVar as u16) << 12 | (param_reg.unwrap() as u16) << 9 | (self.curType as u16);
+                    bytecode = 0 | (OpCodes::OpNewVar as u8);
+                    self.program.push(bytecode);
+                    bytecode = 0 | (param_reg.unwrap()) << 5 | (self.curType as u8);
                     self.program.push(bytecode);
                 }
-                bytecode = 0 |  (OpCodes::OpEndParamLoad as u16) << 12;
+                bytecode = 0 |  (OpCodes::OpEndParamLoad as u8);
                 self.program.push(bytecode);
                 return param_reg;
             }
