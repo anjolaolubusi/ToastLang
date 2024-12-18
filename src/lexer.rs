@@ -23,7 +23,9 @@ pub enum Token {
     EndIf,    
     ///Token for 'for' keyword
     #[token("for")]
-    For,        
+    For,
+    #[token("array")]
+    ArrayDeclare,        
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]

@@ -13,6 +13,7 @@ pub enum ExprAST {
     // Represent a char expression ast node
     CharExpr(String),
     StringExpr(String),
+    ListExpr(Vec<ExprAST>),
     ///Represents a variable experssion ast node
     VariableExpr(String),
     VariableAssignExpr {
@@ -305,13 +306,23 @@ impl<'a> Parser <'a>{
             },
             Token::OpenSquareBracket => {
                 self.getNewToken(); // Consumes '['
-                let expr = self.ParseExpr().expect("Could not parse expression within square bracket");
-                if self.current_token.unwrap() != Token::CloseSquareBracket {
-                    return self.LogError("Expected a ']' here");
-                }
-                self.getNewToken(); //Consumes ']'
-                return Some(expr);
+                let mut listExprs = Vec::<ExprAST>::new();
 
+                if self.current_token.unwrap()!= Token::CloseSquareBracket {
+                    loop{
+                        let parameter = self.ParseExpr().expect("Could not parse parameter");
+                        listExprs.push(parameter);
+                        if self.current_token.unwrap() != Token::Comma {
+                            break;
+                        }
+                        self.getNewToken(); //Consume Comma
+                    }
+                    if self.current_token.unwrap() != Token::CloseSquareBracket {
+                        return self.LogError("Expected a ']' here");
+                    }
+                    self.getNewToken(); //Consumes ']'
+                }
+                return Some(ExprAST::ListExpr(listExprs.clone()));
             },
             Token::If => self.ParseIfElseExpr(),
             Token::For => self.ParseForExpr(),
@@ -365,9 +376,18 @@ impl<'a> Parser <'a>{
         if self.current_token.unwrap() == Token::FuncBegin {
             // consume :
             self.getNewToken();
-            let TypeName = self.lexer.slice().to_owned();
+            let mut TypeName = self.lexer.slice().to_owned();
             // consumes type
             self.getNewToken();
+            if self.current_token.unwrap() == Token::OpenSquareBracket {
+                self.getNewToken();
+                TypeName.push('[');
+                if self.current_token.unwrap() != Token::CloseSquareBracket {
+                    return self.LogError("Expected a '[' here");
+                }
+                self.getNewToken();
+                TypeName.push(']');
+            }
             return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });
         }
 
@@ -425,14 +445,6 @@ impl<'a> Parser <'a>{
 
         if RHS.is_none() {
             return self.LogError("Empty Right Hand of Equation");
-        }
-
-        if BinOp.unwrap() == Token::OpenSquareBracket {
-            if self.current_token.unwrap() == Token::CloseSquareBracket {
-                self.getNewToken();
-            }else{
-                self.LogError("Expected a ']' here");
-            }
         }
 
         let NextPrec = self.GetTokPrecedence();
