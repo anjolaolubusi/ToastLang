@@ -77,10 +77,10 @@ impl VMCore {
                 match curType {
                     VarTypes::FloatType => {
                         self.curType = VarTypes::FloatType;
-                        // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
+                        // Shifts byte code by 5 bits to the right. Masks it by 7 (00000111).
                         let reg = (byteCode >> 5) & 7;
                         let mut num: u64 = 0;
-                        //Float is seperated in 4 16 bit chunks
+                        //Float is seperated in to 8 8 bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
                         for i in range(0, 8){
                             self.pc += 1;
                             num = (num << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
@@ -90,6 +90,7 @@ impl VMCore {
                     },
                     VarTypes::CharType => {
                         self.curType = VarTypes::CharType;
+                        // Only grabs the first 5 bits (31 is all first 5 bits as one) of the bytecode since that is where the current value type is
                         let reg = (byteCode >> 5) & 7;
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
@@ -134,7 +135,7 @@ impl VMCore {
                 }
             },
             OpCodes::OpLoadReg => {
-                let sourceRegNum = (byteCode >> 5) & 15;
+                let sourceRegNum = (byteCode >> 5) & 0x0F;
                 let destRegNum = (byteCode) & 7;
                 self.registers[destRegNum as usize] = self.registers[sourceRegNum as usize];
             },
@@ -142,7 +143,7 @@ impl VMCore {
                 self.pc += 1;
                 let reg = (program[self.pc] >> 5) & 7;
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
-                let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x1F)).unwrap();
+                let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x0F)).unwrap();
                 curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
             },
             OpCodes::OpLoadVar => {
@@ -174,7 +175,9 @@ impl VMCore {
                 }
             },
             OpCodes::OpStartFunc => {
+                //Move from opCode
                 self.pc += 1;
+                //Grab parameter number (Max 255)
                 let param_num = program[self.pc];
                 println!("Para Number is {param_num}");
                 let mut paramTypes = Vec::<VarTypes>::new();
