@@ -24,8 +24,6 @@ pub enum Token {
     ///Token for 'for' keyword
     #[token("for")]
     For,
-    #[token("array")]
-    ArrayDeclare,        
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]
@@ -82,7 +80,9 @@ pub enum Token {
     #[token("[")]
     OpenSquareBracket,
     #[token("]")]
-    CloseSquareBracket
+    CloseSquareBracket,
+    #[regex(r"[a-zA-Z]+\d*\[")]
+    ArrayElementAcces
 }
 
 mod tests {

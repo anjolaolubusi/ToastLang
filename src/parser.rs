@@ -77,6 +77,10 @@ pub enum ExprAST {
         ///Body of Functions
         // body: Option<Box<ExprAST>>
         body: Vec<ExprAST>
+    },
+    ElementAccess{
+        array_name: String,
+        element_index: Box<ExprAST>
     }
 }
 
@@ -341,6 +345,15 @@ impl<'a> Parser <'a>{
             return self.ParsePrimaryExpr();
         }
 
+        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::ArrayElementAcces ){
+            let mut array_name = self.lexer.slice().to_string();
+            array_name.pop();
+            self.getNewToken();
+            let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
+            self.getNewToken();
+            return Some(ExprAST::ElementAccess { array_name: array_name, element_index: Box::new(elementId) })
+        }
+
         let Opc = self.lexer.slice();
         self.getNewToken();
         let Operand = self.ParseUnaryExpr().expect("Could not parse Operand");
@@ -379,13 +392,9 @@ impl<'a> Parser <'a>{
             let mut TypeName = self.lexer.slice().to_owned();
             // consumes type
             self.getNewToken();
-            if self.current_token.unwrap() == Token::OpenSquareBracket {
+            if self.current_token.unwrap() == Token::CloseSquareBracket {
                 self.getNewToken();
-                TypeName.push('[');
-                if self.current_token.unwrap() != Token::CloseSquareBracket {
-                    return self.LogError("Expected a '[' here");
-                }
-                self.getNewToken();
+                // TypeName.push('[');
                 TypeName.push(']');
             }
             return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });

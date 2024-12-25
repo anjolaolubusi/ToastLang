@@ -80,7 +80,7 @@ impl VMCore {
                         // Shifts byte code by 5 bits to the right. Masks it by 7 (00000111).
                         let reg = (byteCode >> 5) & 7;
                         let mut num: u64 = 0;
-                        //Float is seperated in to 8 8 bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
+                        //Floats seperated in to 8 8 bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
                         for i in range(0, 8){
                             self.pc += 1;
                             num = (num << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
@@ -241,9 +241,42 @@ impl VMCore {
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
                 match elementType {
                     VarTypes::CharType => {self.curType = VarTypes::StringType; println!("String Value: {:?}", String::from_utf8(array_vec).unwrap())},
+                    VarTypes::FloatType => {
+                        self.curType = VarTypes::FloatType;
+                        let mut num: u64 = 0;
+                        for i in range(0, (array_vec.len())/8 ){
+                            num = 0;
+                            for j in range(0, 8){
+                                num = (num << 8 * (j > 0) as u64) | array_vec[ (i * 8) + j] as u64;
+                            }
+                        }
+                        println!("Float Value: {}", f64::from_bits(num))
+                    }
                     _ => println!("Unkown Element Type")
                 }
-            }
+            },
+            OpCodes::OpAccessElement => {
+                self.pc += 1;
+                let element_id = f64::from_bits(self.registers[program[self.pc] as usize]);
+                let mut array_var_id: u64 = 0;
+                //Floats seperated in to 8 8-bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
+                for i in range(0, 8){
+                    self.pc += 1;
+                    array_var_id = (array_var_id << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
+                }
+                let array_expr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_var_id as usize).unwrap();
+                match array_expr.0 {
+                    VarTypes::FloatType => {
+                        let mut num = 0;
+                        for j in range(0, 8){
+                            num = (num << 8 * (j > 0) as u64) | *array_expr.1.get(((element_id * 8.0) + j as f64) as usize ).unwrap() as u64;
+                        }
+                        println!("Float Value: {}", f64::from_bits(num))
+                    },
+                    _ => {println!("Unkown element type")}
+                }
+                
+            },
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         
@@ -381,6 +414,10 @@ pub enum OpCodes {
     /// First 8 bits - OpCode
     OpEndArray,
     OpPrint,
+    /// OpAccessElement - 
+    /// 
+    /// First 16 bytes are Variable Ids
+    /// Next 16 bytes are Element Index
     OpAccessElement
 }
 
@@ -388,10 +425,13 @@ pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u64>,
     // Key is variable name, Value is (Memory Block, VarType, Variable Id)
     pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
+    // Key is variable name, Value is (Memory Block, ElementType, Variable Id)
+    pub listLookUp: HashMap<String, (u128, VarTypes, u64)>,
     pub program: Vec<u8>,
     pub curType: VarTypes,
     pub curMemoryBlock: u128,
     pub curNumVarId: u64,
+    pub curNumListId: u64,
     pub curFuncId: u64,
     pub free_reg: u8
 }
@@ -411,10 +451,12 @@ impl ASTConverter {
         ASTConverter{
             funcIdTable: HashMap::new(),
             varLookUp: HashMap::new(),
+            listLookUp: HashMap::new(),
             program: Vec::<u8>::new(),
             curType: VarTypes::FloatType,
             curMemoryBlock: 0,
             curNumVarId: 0,
+            curNumListId: 0,
             curFuncId: 0,
             free_reg: 0
         }
@@ -496,8 +538,40 @@ impl ASTConverter {
                 self.curType = VarTypes::StringType;
 
                 return Some(register)
+            },
+            ExprAST::ListExpr(listOfExpr) => {
+                let mut bytecode: u8 = 0;
 
-            }
+                //Set the register to load into
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+
+                // bytecode = bytecode | ((OpCodes::OpLoadArray as u16) << 12) | ((register as u16) << 9) | VarTypes::CharType as u16;
+                bytecode = bytecode | (OpCodes::OpLoadArray as u8);
+                self.program.push(bytecode);
+                bytecode = 0;
+                bytecode = bytecode | (register << 5) | VarTypes::FloatType as u8;
+
+                // Adds to the program list
+                self.program.push(bytecode);
+                
+                for i in (0..listOfExpr.len()){
+                    if let ExprAST::NumberExpr(val) = listOfExpr[i] {
+                        let floatBits = f64::to_bits(val);
+                        for i in range(0, 8){
+                            let shift: u8 = 56 - 8*i;
+                            self.program.push( ((floatBits >> shift) & 0xFF) as u8);    
+                        }
+                    }
+                }
+
+                bytecode = 0 | (OpCodes::OpEndArray as u8);
+                self.program.push(bytecode);
+                self.curType = VarTypes::FloatType;
+
+                return Some(register)
+
+            },
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u8 = 0;
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
@@ -525,19 +599,27 @@ impl ASTConverter {
                 let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
-                    let valVarType = match typeName.as_str() {
+                    let isArray = typeName.contains("[]");
+                    let typeName_cleaned = typeName.replace("[]", "");
+                    let mut valVarType = match typeName_cleaned.as_str() {
                         "number" => VarTypes::FloatType,
                         "char" => VarTypes::CharType,
                         "string" => VarTypes::StringType,
                         _ => panic!("Can not compile variable type")
                     };
-                    self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
+                    if isArray {
+                        valVarType = VarTypes::ArrayType;
+                        self.listLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumListId));
+                        self.curNumListId += 1;
+                    }else {
+                        self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
+                        self.curNumVarId += 1;
+                    }
                     byteCode = byteCode | OpCodes::OpNewVar as u8;
                     self.program.push(byteCode);
                     byteCode =  0;
                     byteCode = byteCode | ((register_val as u8) << 5)  | valVarType as u8;
                     self.program.push(byteCode);
-                    self.curNumVarId += 1;
                     return Some(register_val);
                 }
                 return None;
@@ -661,6 +743,22 @@ impl ASTConverter {
                 }
                 bytecode = 0 |  (OpCodes::OpEndParamLoad as u8);
                 self.program.push(bytecode);
+                return param_reg;
+            },
+            ExprAST::ElementAccess { array_name, element_index } => {
+                let array_obj = self.listLookUp.get(&array_name).unwrap();
+                let mut array_id_index : [u8;8] = [0; 8];
+                
+                for i in range(0, 8){
+                    let shift: u8 = 56 - 8*i;
+                    array_id_index[i as usize] = ((array_obj.2 >> shift) & 0xFF) as u8;    
+                }
+                let param_reg :Option<u8> = self.ConvertExprToByteCode(*element_index);
+                self.program.push( 0 | OpCodes::OpAccessElement as u8 );
+                self.program.push(param_reg.unwrap());
+                for i in range(0, 8){
+                    self.program.push(array_id_index[i]);
+                }
                 return param_reg;
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
