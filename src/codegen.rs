@@ -251,12 +251,13 @@ impl VMCore {
                             }
                         }
                         println!("Float Value: {}", f64::from_bits(num))
-                    }
+                    },
                     _ => println!("Unkown Element Type")
                 }
             },
             OpCodes::OpAccessElement => {
                 self.pc += 1;
+                let reg = program[self.pc];
                 let element_id = f64::from_bits(self.registers[program[self.pc] as usize]);
                 let mut array_var_id: u64 = 0;
                 //Floats seperated in to 8 8-bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
@@ -271,6 +272,7 @@ impl VMCore {
                         for j in range(0, 8){
                             num = (num << 8 * (j > 0) as u64) | *array_expr.1.get(((element_id * 8.0) + j as f64) as usize ).unwrap() as u64;
                         }
+                        self.registers[reg as usize] = num;
                         println!("Float Value: {}", f64::from_bits(num))
                     },
                     _ => {println!("Unkown element type")}
@@ -638,7 +640,7 @@ impl ASTConverter {
                 };
 
                 match *rhs {
-                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) => {
+                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) | ExprAST::ElementAccess { array_name: _, element_index: _ } => {
                         let varTypeOpr1 = self.curType;
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
@@ -664,6 +666,7 @@ impl ASTConverter {
                         self.program.push(byteCode);
                         return Some(reg1);
                     },
+
                     // dfff
                     _ => {return None;}
                 }
@@ -747,6 +750,7 @@ impl ASTConverter {
             },
             ExprAST::ElementAccess { array_name, element_index } => {
                 let array_obj = self.listLookUp.get(&array_name).unwrap();
+                self.curType = array_obj.1;
                 let mut array_id_index : [u8;8] = [0; 8];
                 
                 for i in range(0, 8){
