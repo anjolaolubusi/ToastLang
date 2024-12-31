@@ -34,7 +34,7 @@ pub enum Token {
     PointTo,
     #[regex("([A-Za-z])+([A-Za-z0-9]+)?")]
     Ident,
-    #[regex(r"[-]?([0-9]*)([.][0-9]+)?")]
+    #[regex(r"([0-9]*)([.][0-9]+)?")]
     Number,
     #[regex("\"([A-Za-z0-9\\s])*\"")]
     String,

@@ -662,8 +662,19 @@ impl ASTConverter {
                     ExprAST::BinaryExpr { op, lhs, rhs, opChar } => {
                         let binExpr = ExprAST::BinaryExpr { op: op, lhs: lhs, rhs: rhs, opChar: opChar };
                         let binExprReg = self.ConvertExprToByteCode(binExpr).unwrap();
-                        byteCode = byteCode | binExprReg;
+                        
+                        // Loads opCode and register into bytecode
+                        byteCode = byteCode | opCode;
                         self.program.push(byteCode);
+                        byteCode = 0;
+                        byteCode = ( (reg1 as u8) << 5);
+                        // Loads register to bytecode
+                        byteCode = byteCode | (binExprReg as u8);
+                        // Pushed bytecode to program list
+                        self.program.push(byteCode);
+
+                        // byteCode = byteCode | binExprReg;
+                        // self.program.push(byteCode);
                         return Some(reg1);
                     },
 

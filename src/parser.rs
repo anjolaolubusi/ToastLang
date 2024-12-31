@@ -425,14 +425,14 @@ impl<'a> Parser <'a>{
     }
     /// Parse right hand side of expression
     pub fn ParseBinOpRHS(&mut self, ExprPrec: i64, mut LHS: Option<ExprAST>) -> Option<ExprAST>{
-        loop{
-        let TokPrec = self.GetTokPrecedence();
+        //Parsing solutuion borrowed from LLVM tutorial guide and this video: https://www.youtube.com/watch?v=WdlXBDHXqAs
+        let currTokPrec = self.GetTokPrecedence();
 
-        if TokPrec < ExprPrec {
+        if currTokPrec < ExprPrec {
             return LHS;
         }
 
-        let mut BinOp : Option<Token>;
+        let BinOp : Option<Token>;
         let charBinOp = self.lexer.slice();
         
         if(self.GetTokPrecedence() == -1){
@@ -449,28 +449,29 @@ impl<'a> Parser <'a>{
         }
 
         self.getNewToken();
-        
-        let mut RHS = self.ParseUnaryExpr();
 
+        let RHS = self.ParseUnaryExpr();
         if RHS.is_none() {
             return self.LogError("Empty Right Hand of Equation");
         }
 
-        let NextPrec = self.GetTokPrecedence();
-        if TokPrec < NextPrec {
-            RHS = self.ParseBinOpRHS(TokPrec + 1, RHS.clone());
-            if RHS.is_none() {
-                return None;
-            }
-        }
-        //Merge
-        //Fix
         let LHS_BOX: Box<ExprAST> = Box::new(LHS.unwrap());
-        let RHS_BOX: Box<ExprAST> = Box::new(RHS.unwrap());
-        LHS = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX, rhs: RHS_BOX, opChar: charBinOp.to_string() });
-        println!("{:?}", LHS);
-        return LHS;
+        let mut RHS_BOX: Box<ExprAST> = Box::new(RHS.clone().unwrap());
+        let mut BinOpExpr = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX.clone(), rhs: RHS_BOX.clone(), opChar: charBinOp.to_string() });
+
+        let NextPrec = self.GetTokPrecedence();
+        
+        if NextPrec <= currTokPrec && NextPrec != -1 {
+            BinOpExpr = self.ParseBinOpRHS(NextPrec, BinOpExpr);
         }
+
+        if NextPrec > currTokPrec && NextPrec != -1 {
+            let NewRHS = self.ParseBinOpRHS(NextPrec, RHS.clone());
+            RHS_BOX = Box::new(NewRHS.unwrap());
+            BinOpExpr = Some(ExprAST::BinaryExpr { op: BinOp.unwrap(), lhs: LHS_BOX.clone(), rhs: RHS_BOX, opChar: charBinOp.to_string() });
+        }
+
+        return  BinOpExpr;
     }
 
     /// Parse if expression
