@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use std::{collections::HashMap, u16};
+use std::{array, collections::HashMap, u16};
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
@@ -240,7 +240,9 @@ impl VMCore {
                 self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
                 match elementType {
-                    VarTypes::CharType => {self.curType = VarTypes::StringType; println!("String Value: {:?}", String::from_utf8(array_vec).unwrap())},
+                    VarTypes::CharType => {
+                        self.curType = VarTypes::StringType; 
+                        println!("String Value: {:?}", String::from_utf8(array_vec).unwrap())},
                     VarTypes::FloatType => {
                         self.curType = VarTypes::FloatType;
                         let mut num: u64 = 0;
@@ -275,6 +277,11 @@ impl VMCore {
                         self.registers[reg as usize] = num;
                         println!("Float Value: {}", f64::from_bits(num))
                     },
+                    VarTypes::CharType => {
+                        let charVal = *array_expr.1.get(element_id as usize).unwrap();
+                        self.registers[reg as usize] = charVal;
+                        println!("Char Value: {:?}", (charVal as u8) as char );
+                    }
                     _ => {println!("Unkown element type")}
                 }
                 
@@ -552,18 +559,46 @@ impl ASTConverter {
                 bytecode = bytecode | (OpCodes::OpLoadArray as u8);
                 self.program.push(bytecode);
                 bytecode = 0;
-                bytecode = bytecode | (register << 5) | VarTypes::FloatType as u8;
+                bytecode = bytecode | (register << 5); 
+                
+                let elementType: VarTypes;
+                match listOfExpr.get(0).unwrap() {
+                    ExprAST::NumberExpr(_) => {
+                        elementType = VarTypes::FloatType;
+                    },
+                    ExprAST::CharExpr(_) => {
+                        elementType = VarTypes::CharType;
+                    },
+                    ExprAST::StringExpr(_) => {
+                        elementType = VarTypes::StringType;
+                    },
+                    _ => {elementType = VarTypes::NullType}
+                }
+
+                bytecode = bytecode | elementType as u8;
+                
 
                 // Adds to the program list
                 self.program.push(bytecode);
                 
                 for i in (0..listOfExpr.len()){
-                    if let ExprAST::NumberExpr(val) = listOfExpr[i] {
-                        let floatBits = f64::to_bits(val);
-                        for i in range(0, 8){
-                            let shift: u8 = 56 - 8*i;
-                            self.program.push( ((floatBits >> shift) & 0xFF) as u8);    
-                        }
+                    match elementType {
+                        VarTypes::FloatType => {
+                            if let ExprAST::NumberExpr(val) = listOfExpr[i].clone() {
+                                let floatBits = f64::to_bits(val);
+                                for i in range(0, 8){
+                                    let shift: u8 = 56 - 8*i;
+                                    self.program.push( ((floatBits >> shift) & 0xFF) as u8);    
+                                }
+                            }
+                        },
+                        VarTypes::CharType => {
+                            if let ExprAST::CharExpr(val) = listOfExpr[i].clone() {
+                                let charBits = val.as_bytes()[0];
+                                self.program.push(charBits);
+                            }
+                        },
+                        _ => {panic!("Unimplemented element type")}
                     }
                 }
 
