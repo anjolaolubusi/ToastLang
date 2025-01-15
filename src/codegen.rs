@@ -1,14 +1,16 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use std::{array, collections::HashMap, u16};
+use std::{array, collections::HashMap, hash::Hash, u16};
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
 use num::{self, range};
 use num_derive::{self, FromPrimitive};
+use multimap::MultiMap;
+
 
 // Holds memory of function
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryBlock {
     pub variableLookup: HashMap<u64, (VarTypes, u64)>,
     pub listLookup: Vec<(VarTypes, Vec<u64>)>
@@ -32,7 +34,7 @@ pub struct VMCore {
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
     /// Key is function Id, Value is (Start pc value, list of param types)
-    pub funcList: HashMap<usize, (usize, Vec<VarTypes>)>,
+    pub funcList: MultiMap<usize, (usize, Vec<VarTypes>)>,
     pub curMemoryId: usize,
     pub curFunctionId: usize,
     pub curType: VarTypes,
@@ -41,12 +43,16 @@ pub struct VMCore {
 
 impl VMCore {
     pub fn new() -> Self{
+        let mut systemFunctions : MultiMap<usize, (usize, Vec<VarTypes>)> = MultiMap::new();
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::FloatType].to_vec() ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::CharType].to_vec() ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayType].to_vec() ));
         let mut vm = VMCore {
             registers: [0; 8],
             pc: 0,
             cond: 0,
             memoryList: Vec::<MemoryBlock>::new(),
-            funcList: HashMap::new(),
+            funcList: systemFunctions.clone(),
             curMemoryId: 0,
             curFunctionId: 0,
             curType: VarTypes::FloatType
@@ -86,7 +92,7 @@ impl VMCore {
                             num = (num << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
                         }
                         self.registers[reg as usize] = num;
-                        println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
+                        // println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
                     },
                     VarTypes::CharType => {
                         self.curType = VarTypes::CharType;
@@ -95,7 +101,7 @@ impl VMCore {
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
                         self.registers[reg as usize] = charBit as u64;
-                        println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
+                        // println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     }
                     _ => panic!("Unkown Type")
                 }
@@ -144,7 +150,14 @@ impl VMCore {
                 let reg = (program[self.pc] >> 5) & 7;
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
                 let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x0F)).unwrap();
-                curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
+                match variableType {
+                    VarTypes::ArrayType => {
+                        curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
+                    },
+                    _ => {
+                        curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
+                    }
+                }
             },
             OpCodes::OpLoadVar => {
                 self.pc += 1;
@@ -165,11 +178,16 @@ impl VMCore {
                     VarTypes::CharType => {
                         println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     },
-                    VarTypes::StringType => {
-                        let arr_vec = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().1.clone();
-                        // array_vec.clone().into_iter().map(|x| x as u64).collect()
-                        let string_vec: Vec<u16> = arr_vec.into_iter().map(|x| x as u16).collect();
-                        println!("String Value: {:?}", String::from_utf16(string_vec.as_slice()).unwrap())
+                    VarTypes::ArrayType => {
+                        let arr_data = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().clone();
+                        match arr_data.0 {
+                            VarTypes::CharType => {
+                                // array_vec.clone().into_iter().map(|x| x as u64).collect()
+                                let string_vec: Vec<u16> = arr_data.1.into_iter().map(|x| x as u16).collect();
+                                println!("String Value: {:?}", String::from_utf16(string_vec.as_slice()).unwrap())
+                            }
+                            _ => {println!("Unimplemented type")}
+                        }
                     }
                     _ => {println!("Unkown variable type")}
                 }
@@ -206,7 +224,8 @@ impl VMCore {
                     self.pc += 1;
                     function_id = (function_id << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
                 }
-                let func_data = self.funcList.get(&(function_id as usize)).unwrap_or_else(|| {panic!("Unkown function")}).clone();
+                let func_data = self.funcList.get_vec(&(function_id as usize)).unwrap_or_else(|| {panic!("Unkown function")}).clone();
+                println!("{:?}", &func_data);
                 self.pc += 1;
                 self.memoryList.push(MemoryBlock::new());
                 self.curMemoryId += 1;
@@ -215,10 +234,49 @@ impl VMCore {
                     self.pc += 1;
                 }
                 let oldPC = self.pc;
-                self.pc = func_data.0;
-                while program[self.pc]  != (OpCodes::OpEndFunc as u8) {
-                    self.ConsumeByteCode(program, program[self.pc]);
-                    self.pc += 1;
+                self.pc = func_data[0].0;
+                if func_data[0].0 != 0 {
+                    while program[self.pc]  != (OpCodes::OpEndFunc as u8) {
+                        self.ConsumeByteCode(program, program[self.pc]);
+                        self.pc += 1;
+                    }
+                }else{
+                    let systemFunction : SystemFunctions = num::FromPrimitive::from_usize(func_data[0].0).unwrap();
+                    println!("{:?}", &self.memoryList);
+                    match systemFunction {
+                        SystemFunctions::printFunction => {
+                            let firstParam = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&0).unwrap();
+                            for funcConfig in func_data {
+                                if funcConfig.1.contains(&VarTypes::FloatType) && firstParam.0 == VarTypes::FloatType {
+                                    println!("{:?}", f64::from_bits(firstParam.1));
+                                    break;
+                                }
+
+                                if funcConfig.1.contains(&VarTypes::CharType) && firstParam.0 == VarTypes::CharType {
+                                    println!("{:?}", (firstParam.1 as u8) as char);
+                                    break;
+                                }
+
+                                if funcConfig.1.contains(&VarTypes::ArrayType) && firstParam.0 == VarTypes::ArrayType {
+                                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(funcConfig.0).unwrap().clone();
+                                    match arr.0 {
+                                        VarTypes::CharType => {
+                                            let string_vec: Vec<u16> = arr.1.into_iter().map(|x| x as u16).collect();
+                                            println!("{:?}", String::from_utf16(string_vec.as_slice()).unwrap())
+                                        },
+                                        VarTypes::FloatType => {
+                                            print!("[");
+                                            for num in arr.1{
+                                                print!("{:?},", f64::from_bits(num));
+                                            }
+                                            print!("]\n");
+                                        }
+                                        _ => {println!("Unimplemented variable type");}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 self.pc = oldPC;
                 self.memoryList.pop();
@@ -226,10 +284,12 @@ impl VMCore {
 
             },
             OpCodes::OpLoadArray => {
-                self.curType = VarTypes::ArrayType;
-                let reg = (byteCode >> 5) & 7;
                 self.pc += 1;
                 byteCode = program[self.pc];
+                self.curType = VarTypes::ArrayType;
+                println!("{:?}",byteCode);
+                println!("{:?}",program[self.pc]);
+                let reg = (byteCode >> 5) & 7;
                 let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & 31).unwrap();
                 let mut array_vec = Vec::<u8>::new();
                 self.pc += 1;
@@ -237,25 +297,28 @@ impl VMCore {
                     array_vec.push(program[self.pc]);
                     self.pc += 1;
                 }
-                self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
-                self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
+                
                 match elementType {
                     VarTypes::CharType => {
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
                         self.curType = VarTypes::StringType; 
                         println!("String Value: {:?}", String::from_utf8(array_vec).unwrap())},
                     VarTypes::FloatType => {
                         self.curType = VarTypes::FloatType;
                         let mut num: u64 = 0;
+                        let mut new_arr : Vec<u64> = Vec::new();
                         for i in range(0, (array_vec.len())/8 ){
                             num = 0;
                             for j in range(0, 8){
                                 num = (num << 8 * (j > 0) as u64) | array_vec[ (i * 8) + j] as u64;
                             }
+                            new_arr.push(num);
                         }
-                        println!("Float Value: {}", f64::from_bits(num))
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, new_arr));
                     },
                     _ => println!("Unkown Element Type")
                 }
+                self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
             },
             OpCodes::OpAccessElement => {
                 self.pc += 1;
@@ -286,6 +349,38 @@ impl VMCore {
                 }
                 
             },
+            OpCodes::OpCopyVarToNewMemoryBlock => {
+                self.pc += 1;
+                let mut var_id: u64 = 0;
+                //Floats seperated in to 8 8-bit chunks. Currenytly set to 64 bits. Might change if porting to a 32 bit system.
+                for i in range(0, 8){
+                    self.pc += 1;
+                    var_id = (var_id << 8 * (i > 0) as u8 ) | program[self.pc]as u64;
+                }                
+
+                let mut memoryList = &mut self.memoryList;
+
+                let varTuple = *memoryList.get(self.curMemoryId - 1).unwrap().variableLookup.get(&var_id).unwrap();
+                let mut newVarId = memoryList.get(self.curMemoryId).unwrap().variableLookup.len();
+                if newVarId > 0 {
+                    newVarId -= 1;
+                }
+
+                match varTuple.0 {
+                    VarTypes::ArrayType => {
+                        let var_list: (VarTypes, Vec<u64>) = memoryList.get(self.curMemoryId - 1).unwrap().listLookup.get(varTuple.1 as usize).unwrap().clone();
+                        let mut newListId: usize = memoryList.get(self.curMemoryId).unwrap().listLookup.len();
+                        if newListId > 0 {
+                            newListId -= 1;
+                        }
+                        memoryList.get_mut(self.curMemoryId).unwrap().listLookup.insert(newListId, var_list.clone());
+                        memoryList.get_mut(self.curMemoryId).unwrap().variableLookup.insert(newVarId as u64, (varTuple.0, newListId as u64));
+                    }
+                    _ => {
+                        memoryList.get_mut(self.curMemoryId).unwrap().variableLookup.insert(newVarId as u64, varTuple);
+                    }
+                }
+            }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
         
@@ -427,7 +522,8 @@ pub enum OpCodes {
     /// 
     /// First 16 bytes are Variable Ids
     /// Next 16 bytes are Element Index
-    OpAccessElement
+    OpAccessElement,
+    OpCopyVarToNewMemoryBlock
 }
 
 pub struct ASTConverter {
@@ -445,7 +541,7 @@ pub struct ASTConverter {
     pub free_reg: u8
 }
 
-#[derive(FromPrimitive, Debug, Clone, Copy)]
+#[derive(FromPrimitive, Debug, Clone, Copy, PartialEq)]
 pub enum VarTypes{
     NullType=0,
     FloatType,
@@ -454,11 +550,19 @@ pub enum VarTypes{
     ArrayType,
 }
 
+#[derive(FromPrimitive, Debug, PartialEq)]
+pub enum SystemFunctions{
+    printFunction=0,
+}
+
 
 impl ASTConverter {
     pub fn new() -> Self{
+        let mut systemFuncTable: HashMap<String, u64> = HashMap::new();
+        systemFuncTable.insert("print".to_string(), SystemFunctions::printFunction as u64);
+
         ASTConverter{
-            funcIdTable: HashMap::new(),
+            funcIdTable: systemFuncTable.clone(),
             varLookUp: HashMap::new(),
             listLookUp: HashMap::new(),
             program: Vec::<u8>::new(),
@@ -544,7 +648,7 @@ impl ASTConverter {
 
                 bytecode = 0 | (OpCodes::OpEndArray as u8);
                 self.program.push(bytecode);
-                self.curType = VarTypes::StringType;
+                self.curType = VarTypes::ArrayType;
 
                 return Some(register)
             },
@@ -604,7 +708,7 @@ impl ASTConverter {
 
                 bytecode = 0 | (OpCodes::OpEndArray as u8);
                 self.program.push(bytecode);
-                self.curType = VarTypes::FloatType;
+                self.curType = VarTypes::ArrayType;
 
                 return Some(register)
 
@@ -612,6 +716,9 @@ impl ASTConverter {
             ExprAST::VariableExpr(name) => {
                 let mut byteCode: u8 = 0;
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
+                if varIdTuple.0 != self.curMemoryBlock {
+                    panic!("Variable does not exist in memory block");
+                }
                 let varId = varIdTuple.2;
                 byteCode = byteCode | OpCodes::OpLoadVar as u8;
                 self.program.push(byteCode);
@@ -641,17 +748,17 @@ impl ASTConverter {
                     let mut valVarType = match typeName_cleaned.as_str() {
                         "number" => VarTypes::FloatType,
                         "char" => VarTypes::CharType,
-                        "string" => VarTypes::StringType,
+                        "string" => VarTypes::CharType,
                         _ => panic!("Can not compile variable type")
                     };
-                    if isArray {
-                        valVarType = VarTypes::ArrayType;
-                        self.listLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumListId));
+                    if isArray || typeName_cleaned.as_str() == "string" {
+                        self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId));
                         self.curNumListId += 1;
-                    }else {
+                        valVarType = VarTypes::ArrayType;
+                    }
                         self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
                         self.curNumVarId += 1;
-                    }
+
                     byteCode = byteCode | OpCodes::OpNewVar as u8;
                     self.program.push(byteCode);
                     byteCode =  0;
@@ -780,18 +887,41 @@ impl ASTConverter {
                     let shift: u8 = 56 - 8*i;
                     self.program.push( ((funcId >> shift) & 0xFF) as u8);    
                 }
+                self.curMemoryBlock += 1;
 
                 //Loads function paramters
                 let mut param_reg :Option<u8> = Some(self.free_reg);
                 for param in parameters {
-                    param_reg = self.ConvertExprToByteCode(param);
-                    bytecode = 0 | (OpCodes::OpNewVar as u8);
-                    self.program.push(bytecode);
-                    bytecode = 0 | (param_reg.unwrap()) << 5 | (self.curType as u8);
-                    self.program.push(bytecode);
+                    // Add check for variable
+                    // If variable, copy variable and append to memory block
+                    match param {
+                        ExprAST::VariableExpr(var) => {
+                            bytecode = 0 | (OpCodes::OpCopyVarToNewMemoryBlock as u8);
+                            self.program.push(bytecode);
+                            let varIdTuple = self.varLookUp.get(&var).unwrap().clone();
+                            let varId = varIdTuple.2;
+                            bytecode = 0;
+                            bytecode = bytecode | varIdTuple.1 as u8;
+                            self.program.push(bytecode);
+            
+                            for i in range(0, 8){
+                                let shift: u8 = 56 - 8*i;
+                                self.program.push( ((varId >> shift) & 0xFF) as u8);    
+                            }
+
+                        },
+                        _ => {
+                            param_reg = self.ConvertExprToByteCode(param);
+                            bytecode = 0 | (OpCodes::OpNewVar as u8);
+                            self.program.push(bytecode);
+                            bytecode = 0 | (param_reg.unwrap()) << 5 | (self.curType as u8);
+                            self.program.push(bytecode);
+                        }
+                    }
                 }
                 bytecode = 0 |  (OpCodes::OpEndParamLoad as u8);
                 self.program.push(bytecode);
+                self.curMemoryBlock -= 1;
                 return param_reg;
             },
             ExprAST::ElementAccess { array_name, element_index } => {
