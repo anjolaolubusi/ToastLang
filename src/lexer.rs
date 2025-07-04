@@ -81,8 +81,8 @@ pub enum Token {
     OpenSquareBracket,
     #[token("]")]
     CloseSquareBracket,
-    #[regex(r"[a-zA-Z]+\d*\[")]
-    ArrayElementAcces
+    // #[regex(r"[a-zA-Z]+\d*\[")]
+    // ArrayElementAcces
 }
 
 mod tests {

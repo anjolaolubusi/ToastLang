@@ -321,11 +321,11 @@ impl<'a> Parser <'a>{
                         }
                         self.getNewToken(); //Consume Comma
                     }
-                    if self.current_token.unwrap() != Token::CloseSquareBracket {
-                        return self.LogError("Expected a ']' here");
-                    }
-                    self.getNewToken(); //Consumes ']'
                 }
+                if self.current_token.unwrap() != Token::CloseSquareBracket {
+                    return self.LogError("Expected a ']' here");
+                }
+                self.getNewToken(); //Consumes ']'
                 return Some(ExprAST::ListExpr(listExprs.clone()));
             },
             Token::If => self.ParseIfElseExpr(),
@@ -343,15 +343,6 @@ impl<'a> Parser <'a>{
     pub fn ParseUnaryExpr(&mut self) -> Option<ExprAST>{
         if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::Number || self.lexer.slice().chars().all(char::is_alphanumeric) || [Token::OpeningParenthesis, Token::Comma, Token::Comment, Token::MultilineCommentBegin, Token::Char, Token::String, Token::OpenSquareBracket].contains(&self.current_token.unwrap()) ){
             return self.ParsePrimaryExpr();
-        }
-
-        if(!self.lexer.slice().is_ascii() || self.current_token.unwrap() == Token::ArrayElementAcces ){
-            let mut array_name = self.lexer.slice().to_string();
-            array_name.pop();
-            self.getNewToken();
-            let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
-            self.getNewToken();
-            return Some(ExprAST::ElementAccess { array_name: array_name, element_index: Box::new(elementId) })
         }
 
         let Opc = self.lexer.slice();
@@ -386,16 +377,29 @@ impl<'a> Parser <'a>{
             return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
         }
 
+        if self.current_token.unwrap() == Token::OpenSquareBracket {
+            //consumes [
+            self.getNewToken();
+            let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
+            // ]
+            self.getNewToken();
+            return Some(ExprAST::ElementAccess { array_name: IdName, element_index: Box::new(elementId) })
+        }
+
         if self.current_token.unwrap() == Token::FuncBegin {
             // consume :
             self.getNewToken();
             let mut TypeName = self.lexer.slice().to_owned();
             // consumes type
             self.getNewToken();
-            if self.current_token.unwrap() == Token::CloseSquareBracket {
+            // if self.current_token.unwrap() == Token::CloseSquareBracket {
+            //     self.getNewToken();
+            //     // TypeName.push('[');
+            //     TypeName.push(']');
+            // }
+            while [Token::OpenSquareBracket, Token::CloseSquareBracket].contains(&self.current_token.unwrap()) {
+                TypeName.push_str(self.lexer.slice());
                 self.getNewToken();
-                // TypeName.push('[');
-                TypeName.push(']');
             }
             return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });
         }

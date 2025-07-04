@@ -20,13 +20,14 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let mut buffer = "".to_string();
     let args: Vec<String> = env::args().collect();
+    let mut toast_vm = codegen::VMCore::new();
+    let mut ast_converter = codegen::ASTConverter::new();
     // let mut cpu: ToastVM = ToastVM::new();
     // let mut converter: ExprConverter = ExprConverter::new();
     println!("{:?}", args);
     match args.len() {
         1 => {
-            let mut toast_vm = codegen::VMCore::new();
-            let mut ast_converter = codegen::ASTConverter::new();
+
             loop{
                 print_flush!("> ");
             //io::stdout().write_all(b"> ");
@@ -53,7 +54,12 @@ fn main() {
             let test = parser.parse();
             if !test.is_none() {
                 let parsed_list = test.unwrap();
-                println!("-> Parsed: {:?}", parsed_list);
+                // println!("-> Parsed: {:?}", parsed_list);
+                for ast in &parsed_list {
+                    ast_converter.ConvertExprToByteCode(ast.to_owned());
+                    toast_vm.processProgram(&ast_converter.program);
+                    println!("ToastVM: {:?}", toast_vm);
+                }
             }
         },
         _ => {println!("Too many arguments")}
