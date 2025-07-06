@@ -354,7 +354,7 @@ impl<'a> Parser <'a>{
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
         let IdName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Ident
-        if self.current_token.is_none() || !vec![Token::OpeningParenthesis, Token::FuncBegin].contains(&self.current_token.unwrap()) {
+        if self.current_token.is_none() || !vec![Token::OpeningParenthesis, Token::FuncBegin, Token::OpenSquareBracket].contains(&self.current_token.unwrap()) {
             return Some(ExprAST::VariableExpr(IdName));
         }
         if self.current_token.unwrap() == Token::OpeningParenthesis {
