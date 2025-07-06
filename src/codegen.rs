@@ -289,6 +289,7 @@ impl VMCore {
                 let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & 31).unwrap();
                 let mut array_vec = Vec::<u8>::new();
                 self.pc += 1;
+                let oldPC = self.pc;
                 while (program[self.pc] != OpCodes::OpEndArray as u8) {
                     array_vec.push(program[self.pc]);
                     self.pc += 1;
@@ -303,15 +304,43 @@ impl VMCore {
                         self.curType = VarTypes::FloatType;
                         let mut num: u64 = 0;
                         let mut new_arr : Vec<u64> = Vec::new();
-                        for i in range(0, (array_vec.len())/8 ){
-                            num = 0;
-                            for j in range(0, 8){
-                                num = (num << 8 * (j > 0) as u64) | array_vec[ (i * 8) + j] as u64;
+                        if (array_vec.len() > 0){
+                            for i in range(0, (array_vec.len())/8 ){
+                                num = 0;
+                                for j in range(0, 8){
+                                    num = (num << 8 * (j > 0) as u64) | array_vec[ (i * 8) + j] as u64;
+                                }
+                                new_arr.push(num);
                             }
-                            new_arr.push(num);
                         }
                         self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, new_arr));
                     },
+                    VarTypes::ArrayType => {
+                        self.pc = oldPC;
+                        let mut new_arr : Vec<u64> = Vec::new();
+                        while (program[self.pc] != OpCodes::OpEndArray as u8) { 
+                            match num::FromPrimitive::from_u8(program[self.pc]).unwrap() {
+                                OpCodes::OpLoadMultiDimensionalArrayElement => {
+                                    self.pc += 1;
+                                    self.ConsumeByteCode(program, program[self.pc]);
+                                },
+                                OpCodes::OpEndMultiDimensionalArrayElement => {
+                                    new_arr.push( (self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.len()-1) as u64 );
+                                    if (self.pc+1 > program.len()){
+                                        break;
+                                    }
+                                    if (program[self.pc+1] != OpCodes::OpLoadMultiDimensionalArrayElement as u8){
+                                        self.pc += 1;
+                                        break;
+                                    }
+                                }
+                                _ => {panic!("Unimplemented arm for Array match")}
+                            }
+                            self.pc += 1;
+                        }
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((VarTypes::ArrayRef, new_arr));
+
+                    }
                     _ => println!("Unkown Element Type")
                 }
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
@@ -506,7 +535,9 @@ pub enum OpCodes {
     /// First 16 bytes are Variable Ids
     /// Next 16 bytes are Element Index
     OpAccessElement,
-    OpCopyVarToNewMemoryBlock
+    OpCopyVarToNewMemoryBlock,
+    OpLoadMultiDimensionalArrayElement,
+    OpEndMultiDimensionalArrayElement,
 }
 
 pub struct ASTConverter {
@@ -531,6 +562,7 @@ pub enum VarTypes{
     CharType,
     StringType,
     ArrayType,
+    ArrayRef
 }
 
 #[derive(FromPrimitive, Debug, PartialEq)]
@@ -549,7 +581,7 @@ impl ASTConverter {
             varLookUp: HashMap::new(),
             listLookUp: HashMap::new(),
             program: Vec::<u8>::new(),
-            curType: VarTypes::FloatType,
+            curType: VarTypes::NullType,
             curMemoryBlock: 0,
             curNumVarId: 0,
             curNumListId: 0,
@@ -649,17 +681,24 @@ impl ASTConverter {
                 bytecode = bytecode | (register << 5); 
                 
                 let elementType: VarTypes;
-                match listOfExpr.get(0).unwrap() {
-                    ExprAST::NumberExpr(_) => {
-                        elementType = VarTypes::FloatType;
-                    },
-                    ExprAST::CharExpr(_) => {
-                        elementType = VarTypes::CharType;
-                    },
-                    ExprAST::StringExpr(_) => {
-                        elementType = VarTypes::CharType;
-                    },
-                    _ => {elementType = VarTypes::NullType}
+                if (listOfExpr.len() < 1) {
+                    elementType = self.curType;
+                } else {
+                    match listOfExpr.get(0).unwrap() {
+                        ExprAST::NumberExpr(_) => {
+                            elementType = VarTypes::FloatType;
+                        },
+                        ExprAST::CharExpr(_) => {
+                            elementType = VarTypes::CharType;
+                        },
+                        ExprAST::StringExpr(_) => {
+                            elementType = VarTypes::CharType;
+                        },
+                        ExprAST::ListExpr(_) => {
+                            elementType = VarTypes::ArrayType;
+                        },
+                        _ => {elementType = self.curType}
+                    }
                 }
 
                 bytecode = bytecode | elementType as u8;
@@ -685,6 +724,11 @@ impl ASTConverter {
                                 self.program.push(charBits);
                             }
                         },
+                        VarTypes::ArrayType => {
+                            self.program.push(OpCodes::OpLoadMultiDimensionalArrayElement as u8);
+                            self.ConvertExprToByteCode(listOfExpr[i].clone());
+                            self.program.push(OpCodes::OpEndMultiDimensionalArrayElement as u8);
+                        }
                         _ => {panic!("Unimplemented element type")}
                     }
                 }
@@ -728,8 +772,7 @@ impl ASTConverter {
                 let mut byteCode: u8 = 0;
                 let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
-                    register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
-                    let isArray = typeName.contains("[]");
+                    let array_dim_count = typeName.split("[]").count() - 1;
                     let typeName_cleaned = typeName.replace("[]", "");
                     let mut valVarType = match typeName_cleaned.as_str() {
                         "number" => VarTypes::FloatType,
@@ -737,6 +780,9 @@ impl ASTConverter {
                         "string" => VarTypes::CharType,
                         _ => panic!("Can not compile variable type")
                     };
+                    let isArray = (array_dim_count > 0);
+                    self.curType = valVarType;
+                    register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
                     if isArray || typeName_cleaned.as_str() == "string" {
                         self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId));
                         self.curNumListId += 1;
