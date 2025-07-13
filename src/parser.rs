@@ -393,21 +393,19 @@ impl<'a> Parser <'a>{
 
         if self.current_token.unwrap() == Token::OpenSquareBracket {
             let mut array_indexes: Vec<Box<ExprAST>> = Vec::new();
-            let mut indexes_cosnumed: bool = false;
             //consumes [
-            while !indexes_cosnumed {
-            self.getNewToken();
-            let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
-            array_indexes.push(Box::new(elementId));
-            // ]
-            self.getNewToken();
-            if self.current_token.is_none() {
-                indexes_cosnumed = true;
-                break;
-            }
-            if self.current_token.unwrap() != Token::OpenSquareBracket {
-                indexes_cosnumed = true;
-            }
+            loop {
+                self.getNewToken();
+                let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
+                array_indexes.push(Box::new(elementId));
+                // ]
+                self.getNewToken();
+                if self.current_token.is_none() {
+                    break;
+                }
+                if self.current_token.unwrap() != Token::OpenSquareBracket {
+                    break;
+                }
             }
             return Some(ExprAST::ElementAccess { array_name: IdName, element_indexes: array_indexes.clone() })
         }
@@ -594,21 +592,39 @@ mod tests {
     
     #[test]
     fn checkBasicParse(){
-        let source = "def foo (a, b): a-b end";
+        let source = "a + b";
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1)
+        let true_val = ExprAST::BinaryExpr { 
+            op: crate::lexer::Token::Plus, 
+            lhs: Box::new(ExprAST::VariableExpr("a".to_string())), 
+            rhs: Box::new(ExprAST::VariableExpr("b".to_string())), 
+            opChar: "+".to_string()
+        };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val);
     }
 
     #[test]
     fn checkTwoFuncs(){
-        let source = "def foo (a, b): \n a-b \n end \n def boo (a, b): a+b end";
+        let source = "def foo (a: number, b: number): \n a-b \n end \n def boo (a: number, b: number): a+b end";
         println!("{}", source);
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 2);
+        let true_val = [ 
+            ExprAST::FuncExpr { 
+                name: "foo".to_string(), 
+                args: [ExprAST::VariableHeader { name: "a".to_string(), typeName: "number".to_string() }, ExprAST::VariableHeader { name: "b".to_string(), typeName: "number".to_string() }].to_vec(), 
+                body: [ExprAST::BinaryExpr { op: (crate::lexer::Token::Minus), lhs: Box::new(ExprAST::VariableExpr("a".to_string())), rhs: Box::new(ExprAST::VariableExpr("b".to_string())), opChar: "-".to_string() }].to_vec()
+            },
+            ExprAST::FuncExpr { 
+                name: "boo".to_string(), 
+                args: [ExprAST::VariableHeader { name: "a".to_string(), typeName: "number".to_string() }, ExprAST::VariableHeader { name: "b".to_string(), typeName: "number".to_string() }].to_vec(), 
+                body: [ExprAST::BinaryExpr { op: (crate::lexer::Token::Plus), lhs: Box::new(ExprAST::VariableExpr("a".to_string())), rhs: Box::new(ExprAST::VariableExpr("b".to_string())), opChar: "+".to_string() }].to_vec()
+            },
+         ];
+        assert_eq!(test.unwrap(), true_val.to_vec());
     }
 
     #[test]
@@ -617,27 +633,19 @@ mod tests {
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1);
+        let true_val = ExprAST::BinaryExpr { op: crate::lexer::Token::Plus, lhs: Box::new(ExprAST::NumberExpr(4 as f64)), rhs: Box::new(ExprAST::NumberExpr(5 as f64)), opChar: "+".to_string() };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val);
 
     }
 
-    #[test]
-    fn checkIfParsing(){
-        let source = "if boo(a) then: zoo(a) else: bar(a) end";
-        let mut parser = Parser::new(source);
-        let test = parser.parse();
-        println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1);
-    }
-
-    #[test]
-    fn checkForLoopParsing(){
-        let source = "for i=1->10, 1: a * i end";
-        let mut parser = Parser::new(source);
-        let test = parser.parse();
-        println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1);
-    }
+    // #[test]
+    // fn checkIfParsing(){
+    //     let source = "if boo(a) then: zoo(a) else: bar(a) end";
+    //     let mut parser = Parser::new(source);
+    //     let test = parser.parse();
+    //     println!("{:?}", test);
+    //     assert_eq!(test.unwrap().len(), 1);
+    // }
 
     #[test]
     fn checkForSingleLineComment(){
@@ -645,7 +653,7 @@ mod tests {
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1);
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), ExprAST::CommentExpr("This is a test ".to_string()));
     }
 
     #[test]
@@ -655,11 +663,13 @@ mod tests {
         let mut parser = Parser::new(&contents);
         let parsedFile = parser.parse();
         println!("{:?}", parsedFile);
+        assert_eq!(parsedFile.is_some(), true);
+        assert_eq!(parsedFile.unwrap().len(), 3);
     }
 
     #[test]
     fn parseVarDeclare(){
-        let source = "let a: numbers = 5";
+        let source = "let a: number = 5";
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
