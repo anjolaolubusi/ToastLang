@@ -71,7 +71,7 @@ impl VMCore {
             memoryList: Vec::<MemoryBlock>::new(),
             funcList: VMCore::getSystemFunctions().clone(),
             curMemoryId: 0,
-            curFunctionId: 0,
+            curFunctionId: 1,
             curType: VarTypes::FloatType
         };
         vm.memoryList.push(MemoryBlock::new());
@@ -219,6 +219,7 @@ impl VMCore {
                 self.pc += 1;
                 let startPCval = self.pc;
                 self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone()));
+                print!("{:?}", self.funcList);
                 while program[self.pc] != (OpCodes::OpEndFunc as u8) {
                     self.pc += 1;
                 }
@@ -228,9 +229,9 @@ impl VMCore {
                 
             },
             OpCodes::OpCallFunc => {
+                //TODO: Replace 1 with function that counts system functions
                 let function_id = self.get64BitVal(program);
                 let func_data = self.funcList.get_vec(&(function_id as usize)).unwrap_or_else(|| {panic!("Unkown function")}).clone();
-                println!("{:?}", &func_data);
                 self.pc += 1;
                 self.memoryList.push(MemoryBlock::new());
                 self.curMemoryId += 1;
@@ -585,7 +586,7 @@ impl ASTConverter {
             curMemoryBlock: 0,
             curNumVarId: 0,
             curNumListId: 0,
-            curFuncId: 0,
+            curFuncId: 1,
             free_reg: 0
         }
     }
@@ -765,6 +766,8 @@ impl ASTConverter {
                     let shift: u8 = 56 - 8*i;
                     self.program.push( ((varId >> shift) & 0xFF) as u8);    
                 }
+
+                self.curType = varIdTuple.1;
 
                 return Some(register);
             }
