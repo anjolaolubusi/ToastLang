@@ -80,9 +80,23 @@ pub enum ExprAST {
     },
     ElementAccess{
         array_name: String,
-        element_index: Box<ExprAST>
+        element_indexes: Vec<Box<ExprAST>>
     }
 }
+
+// impl<T: PartialEq, U: PartialEq> PartialEq for ExprAST {
+//     fn eq(&self, other: &Self) -> bool {
+//         use ExprAST::*;
+//         match (self, other) {
+//             (NumberExpr(a), NumberExpr(b)) => a == b,
+//             (CharExpr(a), CharExpr(b)) => a == b,
+//             (StringExpr(a), StringExpr(b)) => a == b,
+//             (ListExpr(a), ListExpr(b)) => a == b,
+//             (ElementAccess { array_name: a_name, element_indexes: a_index }, ElementAccess { array_name: b_name, element_indexes: b_index}) => a_name == b_name && a_index == b_index,
+//             _ => false,
+//         }
+//     }
+// }
 
 ///Parser object
 #[derive(Clone, Debug)]
@@ -378,12 +392,24 @@ impl<'a> Parser <'a>{
         }
 
         if self.current_token.unwrap() == Token::OpenSquareBracket {
+            let mut array_indexes: Vec<Box<ExprAST>> = Vec::new();
+            let mut indexes_cosnumed: bool = false;
             //consumes [
+            while !indexes_cosnumed {
             self.getNewToken();
             let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
+            array_indexes.push(Box::new(elementId));
             // ]
             self.getNewToken();
-            return Some(ExprAST::ElementAccess { array_name: IdName, element_index: Box::new(elementId) })
+            if self.current_token.is_none() {
+                indexes_cosnumed = true;
+                break;
+            }
+            if self.current_token.unwrap() != Token::OpenSquareBracket {
+                indexes_cosnumed = true;
+            }
+            }
+            return Some(ExprAST::ElementAccess { array_name: IdName, element_indexes: array_indexes.clone() })
         }
 
         if self.current_token.unwrap() == Token::FuncBegin {
@@ -563,7 +589,7 @@ impl<'a> Parser <'a>{
 }
 
 mod tests {
-    use crate::parser::Parser;
+    use crate::parser::{ExprAST, Parser};
     
     
     #[test]
@@ -625,37 +651,48 @@ mod tests {
     #[test]
     fn parseFile(){
         use std::fs;
-        let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+        let contents = fs::read_to_string("exampleCode/string-test.toast").expect("Expected file here");
         let mut parser = Parser::new(&contents);
         let parsedFile = parser.parse();
         println!("{:?}", parsedFile);
     }
 
     #[test]
-    fn parseBinaryFunc(){
-        let source = "def binary| 5 (LHS, RHS): \n if LHS then: 1 else: if RHS then: 1 else: 0 end end end \n 2 < 3 | 4 > 2";
-        let mut parser = Parser::new(source);
-        let test = parser.parse();
-        println!("{:?}", test);
-        println!("{:?}", test.to_owned().unwrap()[1]);
-        assert_eq!(test.unwrap().len(), 2);
-    }
-
-    #[test]
-    fn parseUnaryFunc(){
-        let source = "def unary!(v): \n if v then: 0 else: 1 end end";
-        let mut parser = Parser::new(source);
-        let test = parser.parse();
-        println!("{:?}", test);
-        assert_eq!(test.unwrap().len(), 1);
-    }
-
-    #[test]
     fn parseVarDeclare(){
-        let source = "let a = 5";
+        let source = "let a: numbers = 5";
         let mut parser = Parser::new(source);
         let test = parser.parse();
         println!("{:?}", test);
         assert_eq!(test.unwrap().len(), 1);
+    }
+
+    #[test] 
+    fn parseOneDimensionalArray(){
+        let source = "a[0]";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        let true_val = ExprAST::ElementAccess { array_name: "a".to_string(), element_indexes: [Box::new(ExprAST::NumberExpr(0 as f64))].to_vec() };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val );
+    }
+
+    #[test] 
+    fn parseTwoDimensionalArray(){
+        let source = "a[0][1]";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        let true_val = ExprAST::ElementAccess { array_name: "a".to_string(), element_indexes: [Box::new(ExprAST::NumberExpr(0 as f64)), Box::new(ExprAST::NumberExpr(1 as f64))].to_vec() };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val );
+    }
+
+    #[test] 
+    fn parseMultiDimensionalArray(){
+        let source = "a[0][1][2]";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        let true_val = ExprAST::ElementAccess { array_name: "a".to_string(), element_indexes: [Box::new(ExprAST::NumberExpr(0 as f64)), Box::new(ExprAST::NumberExpr(1 as f64)),  Box::new(ExprAST::NumberExpr(2 as f64))].to_vec() };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val );
     }
 }

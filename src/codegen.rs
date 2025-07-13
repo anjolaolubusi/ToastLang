@@ -814,7 +814,7 @@ impl ASTConverter {
                 };
 
                 match *rhs {
-                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) | ExprAST::ElementAccess { array_name: _, element_index: _ } => {
+                    ExprAST::NumberExpr(_) | ExprAST::CharExpr(_) | ExprAST::StringExpr(_) | ExprAST::ElementAccess { array_name: _, element_indexes: _ } => {
                         let varTypeOpr1 = self.curType;
                         // Gets register for the right hand side
                         let reg2 = self.ConvertExprToByteCode(*rhs).unwrap();
@@ -956,22 +956,22 @@ impl ASTConverter {
                 self.curMemoryBlock -= 1;
                 return param_reg;
             },
-            ExprAST::ElementAccess { array_name, element_index } => {
-                let array_obj = self.listLookUp.get(&array_name).unwrap();
-                self.curType = array_obj.1;
-                let array_id = array_obj.2;
+            // ExprAST::ElementAccess { array_name, element_indexes: element_index } => {
+            //     let array_obj = self.listLookUp.get(&array_name).unwrap();
+            //     self.curType = array_obj.1;
+            //     let array_id = array_obj.2;
                 
-                let param_reg :Option<u8> = self.ConvertExprToByteCode(*element_index);
-                self.program.push( 0 | OpCodes::OpAccessElement as u8 );
-                self.program.push(param_reg.unwrap());
+            //     let param_reg :Option<u8> = self.ConvertExprToByteCode(*element_index);
+            //     self.program.push( 0 | OpCodes::OpAccessElement as u8 );
+            //     self.program.push(param_reg.unwrap());
                 
-                for i in range(0, 8){
-                    let shift: u8 = 56 - 8*i;
-                    self.program.push((( array_id >> shift) & 0xFF) as u8);
-                }
+            //     for i in range(0, 8){
+            //         let shift: u8 = 56 - 8*i;
+            //         self.program.push((( array_id >> shift) & 0xFF) as u8);
+            //     }
 
-                return param_reg;
-            }
+            //     return param_reg;
+            // }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
     }
