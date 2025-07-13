@@ -21,9 +21,6 @@ pub enum Token {
     ///Token for 'endif' keyword
     #[token("endif")]
     EndIf,    
-    ///Token for 'for' keyword
-    #[token("for")]
-    For,
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]

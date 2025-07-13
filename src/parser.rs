@@ -343,7 +343,6 @@ impl<'a> Parser <'a>{
                 return Some(ExprAST::ListExpr(listExprs.clone()));
             },
             Token::If => self.ParseIfElseExpr(),
-            Token::For => self.ParseForExpr(),
             Token::Comment => self.ParseSingleLineComment(),
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             Token::VarDeclare => self.ParseVarDeclar(),
@@ -533,41 +532,6 @@ impl<'a> Parser <'a>{
 
         //Add Else Parse
         
-    }
-    /// Parses for loop expression
-    pub fn ParseForExpr(&mut self) -> Option<ExprAST> {
-        self.getNewToken(); //Consume for
-
-        if(self.current_token.unwrap() != Token::Ident){
-            self.LogError("Need a identifer here");
-        }
-        let varName = self.lexer.slice();
-        self.getNewToken(); //Eat identifer
-        if(self.current_token.unwrap() != Token::Equals){
-            self.LogError("Need a = here");
-        }
-        self.getNewToken(); // Eat =
-        let Start = self.ParseExpr().expect("Something wrong with start value of loop");
-        if(self.current_token.unwrap() != Token::PointTo){
-            self.LogError("Need a -> here");
-        } 
-        self.getNewToken(); //Eat -> 
-        let End = self.ParseExpr().expect("Something wrong with end value of loop");
-        if(self.current_token.unwrap() != Token::Comma){
-            self.LogError("Need a , here");
-        }
-        self.getNewToken(); //Eat ,
-        let stepBy = self.ParseExpr().expect("Can't parse step-by value here");
-        if(self.current_token.unwrap() != Token::FuncBegin){
-            self.LogError("Expected a : here");
-        }
-        self.getNewToken(); //Eats :
-        let body = self.ParseExpr().expect("Something wrong with parsing body of for loop");
-        if(self.current_token.unwrap() != Token::FuncEnd){
-            self.LogError("Expected a end here");
-        }
-        self.getNewToken(); //Eats end
-        Some(ExprAST::ForExpr { var: varName.to_owned().to_string(), start: Box::new(Start.clone()), end: Box::new(End.clone()), stepFunc: Box::new(stepBy.clone()), body: Box::new(body.clone()) })
     }
 
     pub fn ParseVarDeclar(&mut self) -> Option<ExprAST>{
