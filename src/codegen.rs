@@ -29,7 +29,7 @@ impl MemoryBlock{
 //Holds  cpu function of core
 #[derive(Debug)]
 pub struct VMCore {
-    pub registers: [u64; 8],
+    pub registers: [u64; 9],
     pub pc: usize,
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
@@ -65,7 +65,7 @@ impl VMCore {
 
     pub fn new() -> Self{
         let mut vm = VMCore {
-            registers: [0; 8],
+            registers: [0; 9],
             pc: 0,
             cond: 0,
             memoryList: Vec::<MemoryBlock>::new(),
@@ -147,7 +147,7 @@ impl VMCore {
                             _ => {print!("Unkown Operation")}
                         }
                         println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]));
-                        self.registers[7 as usize] = self.registers[reg1 as usize];
+                        self.registers[8 as usize] = self.registers[reg1 as usize];
                     },
                     VarTypes::StringType => {
                         let reg2 = byteCode & 7;
@@ -1011,7 +1011,7 @@ mod tests {
         assert_eq!(&ast_converter.program, &true_val_program);
         let mut toast_vm = VMCore::new();
         toast_vm.processProgram(&ast_converter.program);
-        assert_eq!(f64::from_bits(toast_vm.registers[7 as usize]), (3 as f64));
+        assert_eq!(f64::from_bits(toast_vm.registers[8 as usize]), (3 as f64));
 
     }
 
@@ -1112,6 +1112,39 @@ mod tests {
         let func_len = toast_vm.funcList.keys().len();
         assert_eq!(toast_vm.funcList.get(&(func_len-1)).unwrap().1, [VarTypes::FloatType].to_vec());
     }
+
+
+    #[test]
+    fn compileFunctionCall(){
+        let source = "def foo(a: number):\na*100\nend\nfoo(32)";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10, 11, 0, 0, 0, 0, 0, 0, 0, 1, 1, 65, 64, 64, 0, 0, 0, 0, 0, 0, 6, 65, 12].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunFunctionCall(){
+        let source = "def foo(a: number):\na*100\nend\nfoo(32)";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10, 11, 0, 0, 0, 0, 0, 0, 0, 1, 1, 65, 64, 64, 0, 0, 0, 0, 0, 0, 6, 65, 12].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        let func_len = toast_vm.funcList.keys().len();
+        assert_eq!(toast_vm.funcList.get(&(func_len-1)).unwrap().1, [VarTypes::FloatType].to_vec());
+        assert_eq!(f64::from_bits(toast_vm.registers[8]), 3200 as f64);
+    }
+
 
     #[test]
     fn compileDeclareVarible(){
