@@ -183,6 +183,7 @@ impl VMCore {
                 let typeVal : VarTypes = num::FromPrimitive::from_u8(program[self.pc]  & 31).unwrap();
                 let varId: u64 = self.get64BitVal(program);
                 self.registers[reg as usize] = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&varId).unwrap().1;
+                self.registers[8 as usize] = self.registers[reg as usize];
                 match typeVal {
                     VarTypes::FloatType => {
                         println!("Variable Value: {}", f64::from_bits(self.registers[reg as usize]))
@@ -251,6 +252,7 @@ impl VMCore {
                     match systemFunction {
                         SystemFunctions::printFunction => {
                             let firstParam = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&0).unwrap();
+                            self.registers[8 as usize] = firstParam.1;
                             if func_data.contains( &(0 as usize, [firstParam.0].to_vec()) ){
                                 if firstParam.0 == VarTypes::ArrayType {
                                     let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(firstParam.1 as usize).unwrap().clone();
@@ -356,11 +358,13 @@ impl VMCore {
                     VarTypes::FloatType => {
                         let num = *array_expr.1.get(element_id as usize).unwrap();
                         self.registers[reg as usize] = num;
+                        self.registers[8 as usize] = num;
                         println!("Float Value: {}", f64::from_bits(num))
                     },
                     VarTypes::CharType => {
                         let charVal = *array_expr.1.get(element_id as usize).unwrap();
                         self.registers[reg as usize] = charVal;
+                        self.registers[8 as usize] = charVal;
                         println!("Char Value: {:?}", (charVal as u8) as char );
                     }
                     _ => {println!("Unkown element type")}
@@ -959,22 +963,24 @@ impl ASTConverter {
                 self.curMemoryBlock -= 1;
                 return param_reg;
             },
-            // ExprAST::ElementAccess { array_name, element_indexes: element_index } => {
-            //     let array_obj = self.listLookUp.get(&array_name).unwrap();
-            //     self.curType = array_obj.1;
-            //     let array_id = array_obj.2;
+            ExprAST::ElementAccess { array_name, element_indexes: element_index } => {
+                let array_obj = self.listLookUp.get(&array_name).unwrap();
+                self.curType = array_obj.1;
+                let array_id = array_obj.2;
+                let mut param_reg :Option<u8> = None;
+                for ele_index in element_index {
+                    param_reg = self.ConvertExprToByteCode(*ele_index);
+                    self.program.push( 0 | OpCodes::OpAccessElement as u8 );
+                    self.program.push(param_reg.unwrap());
+                }
                 
-            //     let param_reg :Option<u8> = self.ConvertExprToByteCode(*element_index);
-            //     self.program.push( 0 | OpCodes::OpAccessElement as u8 );
-            //     self.program.push(param_reg.unwrap());
-                
-            //     for i in range(0, 8){
-            //         let shift: u8 = 56 - 8*i;
-            //         self.program.push((( array_id >> shift) & 0xFF) as u8);
-            //     }
+                for i in range(0, 8){
+                    let shift: u8 = 56 - 8*i;
+                    self.program.push((( array_id >> shift) & 0xFF) as u8);
+                }
 
-            //     return param_reg;
-            // }
+                return param_reg;
+            }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
     }
@@ -1179,4 +1185,37 @@ mod tests {
         assert_eq!(f64::from_bits(toast_vm_var.1), 67 as f64);
     }
 
+    #[test]
+    fn compileElementAccessSingleDimensionalArray(){
+        let source = "let arr: number[] = [1,2,3] arr[0]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 16, 1, 0, 0, 0, 0, 0, 0, 0, 0].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunElementAccessSingleDimensionalArray(){
+        let source = "let arr: number[] = [1,2,3] arr[0]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 16, 1, 0, 0, 0, 0, 0, 0, 0, 0].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        println!("{:?}", toast_vm);
+        let curMemoryBlock = toast_vm.memoryList.first();
+        assert_eq!(curMemoryBlock.is_some(), true);
+        let listLookup = curMemoryBlock.unwrap().listLookup.first();
+        assert_eq!(listLookup.unwrap().0, VarTypes::FloatType);
+        assert_eq!(f64::from_bits(toast_vm.registers[8 as usize]), 1 as f64 ); 
+    }
 }
