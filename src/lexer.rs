@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn lex_file(){
         use std::fs;
-        let contents = fs::read_to_string("exampleCode/test1.toast").expect("Expected file here");
+        let contents = fs::read_to_string("exampleCode/string-test.toast").expect("Expected file here");
         let lex = Token::lexer(&contents);
         let lexed_file: Vec<_> = lex.spanned().collect();
         println!("{:?}", lexed_file);
