@@ -146,7 +146,8 @@ impl VMCore {
                             OpCodes::OpDiv => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) / f64::from_bits(self.registers[reg2 as usize]));},
                             _ => {print!("Unkown Operation")}
                         }
-                        println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]))
+                        println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]));
+                        self.registers[7 as usize] = self.registers[reg1 as usize];
                     },
                     VarTypes::StringType => {
                         let reg2 = byteCode & 7;
@@ -219,7 +220,6 @@ impl VMCore {
                 self.pc += 1;
                 let startPCval = self.pc;
                 self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone()));
-                print!("{:?}", self.funcList);
                 while program[self.pc] != (OpCodes::OpEndFunc as u8) {
                     self.pc += 1;
                 }
@@ -981,3 +981,169 @@ impl ASTConverter {
 
 }
 
+mod tests {
+    use crate::parser::{ExprAST, Parser};
+    use crate::codegen::{ASTConverter, VMCore, VarTypes};
+
+    #[test]
+    fn compileBasicEquation(){
+        let source = "1 + 2";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [1, 1, 63, 240, 0, 0, 0, 0, 0, 0, 1, 33, 64, 0, 0, 0, 0, 0, 0, 0, 2, 1].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunBasicEquation(){
+        let source = "1 + 2";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val_program: Vec<u8> = [1, 1, 63, 240, 0, 0, 0, 0, 0, 0, 1, 33, 64, 0, 0, 0, 0, 0, 0, 0, 2, 1].to_vec();
+        assert_eq!(&ast_converter.program, &true_val_program);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        assert_eq!(f64::from_bits(toast_vm.registers[7 as usize]), (3 as f64));
+
+    }
+
+    #[test]
+    fn compileString(){
+        let source = "\"Hello World\"";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 2, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 14].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        //assert_eq!(f64::from_bits(toast_vm.registers[7 as usize]), (3 as f64));
+    }
+
+    #[test]
+    fn compileAndRunString(){
+        let source = "\"Hello World\"";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 2, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 14].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        let curMemoryBlock = toast_vm.memoryList.first();
+        assert_eq!(curMemoryBlock.is_some(), true);
+        let string_u8_vec: Vec<u8> = curMemoryBlock.unwrap().listLookup.first().unwrap().1.clone().into_iter().map(|x| x as u8).collect();
+        assert_eq!(String::from_utf8(string_u8_vec).unwrap(), "Hello World".to_string());
+    }
+
+    #[test]
+    fn compileArray(){
+        let source = "let arr: number[] = [1,2,3,4]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunArray(){
+        let source = "let arr: number[] = [1,2,3,4]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        let curMemoryBlock = toast_vm.memoryList.first();
+        assert_eq!(curMemoryBlock.is_some(), true);
+        assert_eq!(curMemoryBlock.unwrap().variableLookup.get(&(0 as u64)).unwrap().0, VarTypes::ArrayType);
+        assert_eq!(curMemoryBlock.unwrap().listLookup.first().unwrap().0, VarTypes::FloatType);
+        let float_vec: Vec<f64> = curMemoryBlock.unwrap().listLookup.first().unwrap().1.clone().into_iter().map(|x| f64::from_bits(x)).collect();
+        assert_eq!(float_vec, [1.0,2.0,3.0,4.0].to_vec());
+    }
+
+    #[test]
+    fn compileFunction(){
+        let source = "def foo(a: number):\na*100\nend";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunFunction(){
+        let source = "def foo(a: number):\na*100\nend";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        println!("{:?}", toast_vm);
+        let func_len = toast_vm.funcList.keys().len();
+        assert_eq!(toast_vm.funcList.get(&(func_len-1)).unwrap().1, [VarTypes::FloatType].to_vec());
+    }
+
+    #[test]
+    fn compileDeclareVarible(){
+        let source = "let x: number = 67";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        println!("{:?}", ast_converter.program);
+        let true_val: Vec<u8> = [1, 1, 64, 80, 192, 0, 0, 0, 0, 0, 6, 1].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndDeclareVarible(){
+        let source = "let x: number = 67";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [1, 1, 64, 80, 192, 0, 0, 0, 0, 0, 6, 1].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        let toast_vm_var = toast_vm.memoryList.first().unwrap().variableLookup.get(&(0 as u64)).unwrap();
+        println!("{:?}", toast_vm);
+        assert_eq!(toast_vm_var.0, VarTypes::FloatType);
+        assert_eq!(f64::from_bits(toast_vm_var.1), 67 as f64);
+    }
+
+}
