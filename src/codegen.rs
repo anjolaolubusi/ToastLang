@@ -351,7 +351,7 @@ impl VMCore {
             OpCodes::OpAccessArray => {
                     println!("{:?}", program);
                     let array_id: u64 = self.get64BitVal(program);
-                    let mut elements_reg = Vec::<u8>::new();
+                    let mut elements_indexes = Vec::<u64>::new();
                     self.pc += 1;
                     loop {
                         let bb : OpCodes = num::FromPrimitive::from_u8(program[self.pc]).unwrap(); 
@@ -362,7 +362,7 @@ impl VMCore {
                             self.pc += 1;
                             self.ConsumeByteCode(program, program[self.pc]);
                             self.pc += 1;
-                            elements_reg.push(program[self.pc] as u8);
+                            elements_indexes.push(self.registers[program[self.pc] as usize]);
                             self.pc += 1;
                         } else if program[self.pc] == OpCodes::OpAccessElementEnd as u8 {
                             if program.len() <= self.pc + 1 {
@@ -372,20 +372,36 @@ impl VMCore {
                             if program[self.pc + 1] != OpCodes::OpAccessElementBegin as u8 {
                                 break;
                             }
+                            self.pc += 1;
                         }
-                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_id as usize).unwrap();
-                    match arr.0 {
-                        VarTypes::ArrayRef => {
-                        },
-                        VarTypes::FloatType => {
-                            let index = f64::from_bits(self.registers[*elements_reg.first().unwrap() as usize]);
-                            let num = arr.1.get(index as usize).unwrap();
-                            println!("Float Value: {}", f64::from_bits(*num));
-                            self.registers[8 as usize] = *num;
-                        },
-                        _ => {panic!("Unimplemented array type")}
                     }
-                }
+                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_id as usize).unwrap();
+
+                    if elements_indexes.len() > 1 {
+                        let element_index: u64 = *elements_indexes.last().unwrap();
+                        elements_indexes.pop();
+                        let mut cur_arr = arr.1.clone();
+                        for i in 0 .. elements_indexes.len() {
+                            let arr_ref_index = f64::from_bits(*elements_indexes.get(i).unwrap());
+                            let list_index =    *cur_arr.get(arr_ref_index as usize).unwrap() as usize;
+                            let cur_memory = self.memoryList.get(self.curMemoryId).unwrap();
+                            let cur_list: Option<&(VarTypes, Vec<u64>)> = cur_memory.listLookup.get(list_index);
+                            cur_arr = cur_list.unwrap().1.clone();
+                        }
+                        let num = cur_arr.get(f64::from_bits(element_index) as usize).unwrap();
+                        println!("Float Value: {}", f64::from_bits(*num));
+                        self.registers[8 as usize] = *num;
+                    } else {
+                        match arr.0 {
+                            VarTypes::FloatType => {
+                                let index = f64::from_bits(*elements_indexes.first().unwrap());
+                                let num = arr.1.get(index as usize).unwrap();
+                                println!("Float Value: {}", f64::from_bits(*num));
+                                self.registers[8 as usize] = *num;
+                            },
+                            _ => {panic!("Unimplemented array type")}
+                        }
+                    }
             },
             OpCodes::OpCopyVarToNewMemoryBlock => {
                 self.pc += 1;
@@ -751,6 +767,7 @@ impl ASTConverter {
                             self.program.push(OpCodes::OpLoadMultiDimensionalArrayElement as u8);
                             self.ConvertExprToByteCode(listOfExpr[i].clone());
                             self.program.push(OpCodes::OpEndMultiDimensionalArrayElement as u8);
+                            self.curNumListId += 1;
                         }
                         _ => {panic!("Unimplemented element type")}
                     }
@@ -1240,5 +1257,38 @@ mod tests {
         let listLookup = curMemoryBlock.unwrap().listLookup.first();
         assert_eq!(listLookup.unwrap().0, VarTypes::FloatType);
         assert_eq!(f64::from_bits(toast_vm.registers[8 as usize]), 1 as f64 ); 
+    }
+
+    #[test]
+    fn compileElementAccessMultiDimensionalArray(){
+        let source = "let arr: number[] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 4, 20, 13, 33, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+    }
+
+    #[test]
+    fn compileAndRunElementAccessMultiDimensionalArray(){
+        let source = "let arr: number[] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let mut parser = Parser::new(source);
+        let ast_nodes = parser.parse();
+        let mut ast_converter = ASTConverter::new();
+        for ast in &ast_nodes.unwrap() {
+            ast_converter.ConvertExprToByteCode(ast.to_owned());
+        }
+        let true_val: Vec<u8> = [13, 4, 20, 13, 33, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 2, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18].to_vec();
+        assert_eq!(ast_converter.program, true_val);
+        let mut toast_vm = VMCore::new();
+        toast_vm.processProgram(&ast_converter.program);
+        let curMemoryBlock = toast_vm.memoryList.first();
+        assert_eq!(curMemoryBlock.is_some(), true);
+        let listLookup = curMemoryBlock.unwrap().listLookup.first();
+        assert_eq!(listLookup.unwrap().0, VarTypes::FloatType);
+        assert_eq!(f64::from_bits(toast_vm.registers[8 as usize]), 5 as f64 ); 
     }
 }
