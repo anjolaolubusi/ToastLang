@@ -348,28 +348,44 @@ impl VMCore {
                 }
                 self.registers[reg as usize] = (self.memoryList.get(self.curMemoryId).unwrap().listLookup.len()-1) as u64;
             },
-            OpCodes::OpAccessElement => {
-                self.pc += 1;
-                let reg = program[self.pc];
-                let element_id = f64::from_bits(self.registers[program[self.pc] as usize]);
-                let array_var_id: u64 = self.get64BitVal(program);
-                let array_expr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_var_id as usize).unwrap();
-                match array_expr.0 {
-                    VarTypes::FloatType => {
-                        let num = *array_expr.1.get(element_id as usize).unwrap();
-                        self.registers[reg as usize] = num;
-                        self.registers[8 as usize] = num;
-                        println!("Float Value: {}", f64::from_bits(num))
-                    },
-                    VarTypes::CharType => {
-                        let charVal = *array_expr.1.get(element_id as usize).unwrap();
-                        self.registers[reg as usize] = charVal;
-                        self.registers[8 as usize] = charVal;
-                        println!("Char Value: {:?}", (charVal as u8) as char );
+            OpCodes::OpAccessArray => {
+                    println!("{:?}", program);
+                    let array_id: u64 = self.get64BitVal(program);
+                    let mut elements_reg = Vec::<u8>::new();
+                    self.pc += 1;
+                    loop {
+                        let bb : OpCodes = num::FromPrimitive::from_u8(program[self.pc]).unwrap(); 
+                        if [OpCodes::OpAccessElementBegin as u8, OpCodes::OpAccessElementEnd as u8].contains(&program[self.pc]) == false {
+                            panic!("Expected OpAccessElementBegin or OpAccessElementEnd, found: {}", program[self.pc]);
+                        }
+                        if program[self.pc] == OpCodes::OpAccessElementBegin as u8 {
+                            self.pc += 1;
+                            self.ConsumeByteCode(program, program[self.pc]);
+                            self.pc += 1;
+                            elements_reg.push(program[self.pc] as u8);
+                            self.pc += 1;
+                        } else if program[self.pc] == OpCodes::OpAccessElementEnd as u8 {
+                            if program.len() <= self.pc + 1 {
+                                break;
+                            }
+                            
+                            if program[self.pc + 1] != OpCodes::OpAccessElementBegin as u8 {
+                                break;
+                            }
+                        }
+                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_id as usize).unwrap();
+                    match arr.0 {
+                        VarTypes::ArrayRef => {
+                        },
+                        VarTypes::FloatType => {
+                            let index = f64::from_bits(self.registers[*elements_reg.first().unwrap() as usize]);
+                            let num = arr.1.get(index as usize).unwrap();
+                            println!("Float Value: {}", f64::from_bits(*num));
+                            self.registers[8 as usize] = *num;
+                        },
+                        _ => {panic!("Unimplemented array type")}
                     }
-                    _ => {println!("Unkown element type")}
                 }
-                
             },
             OpCodes::OpCopyVarToNewMemoryBlock => {
                 self.pc += 1;
@@ -539,7 +555,9 @@ pub enum OpCodes {
     /// 
     /// First 16 bytes are Variable Ids
     /// Next 16 bytes are Element Index
-    OpAccessElement,
+    OpAccessArray,
+    OpAccessElementBegin,
+    OpAccessElementEnd,
     OpCopyVarToNewMemoryBlock,
     OpLoadMultiDimensionalArrayElement,
     OpEndMultiDimensionalArrayElement,
@@ -968,17 +986,22 @@ impl ASTConverter {
                 self.curType = array_obj.1;
                 let array_id = array_obj.2;
                 let mut param_reg :Option<u8> = None;
-                for ele_index in element_index {
-                    param_reg = self.ConvertExprToByteCode(*ele_index);
-                    self.program.push( 0 | OpCodes::OpAccessElement as u8 );
-                    self.program.push(param_reg.unwrap());
-                }
-                
+
+                self.program.push(0 | OpCodes::OpAccessArray as u8);
+
                 for i in range(0, 8){
                     let shift: u8 = 56 - 8*i;
                     self.program.push((( array_id >> shift) & 0xFF) as u8);
                 }
 
+
+                for ele_index in element_index {
+                    self.program.push( 0 | OpCodes::OpAccessElementBegin as u8 );
+                    param_reg = self.ConvertExprToByteCode(*ele_index);
+                    self.program.push(param_reg.unwrap());
+                    self.program.push( 0 | OpCodes::OpAccessElementEnd as u8 );
+                }
+                
                 return param_reg;
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
@@ -1194,7 +1217,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 16, 1, 0, 0, 0, 0, 0, 0, 0, 0].to_vec();
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
@@ -1207,7 +1230,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 16, 1, 0, 0, 0, 0, 0, 0, 0, 0].to_vec();
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18].to_vec();
         assert_eq!(ast_converter.program, true_val);
         let mut toast_vm = VMCore::new();
         toast_vm.processProgram(&ast_converter.program);
