@@ -398,6 +398,9 @@ impl VMCore {
                                 let num = arr.1.get(index as usize).unwrap();
                                 println!("Float Value: {}", f64::from_bits(*num));
                                 self.registers[8 as usize] = *num;
+                                self.pc += 1;
+                                let reg_final = program[self.pc];
+                                self.registers[reg_final as usize] = *num;
                             },
                             _ => {panic!("Unimplemented array type")}
                         }
@@ -1017,8 +1020,12 @@ impl ASTConverter {
                     self.program.push(param_reg.unwrap());
                     self.program.push( 0 | OpCodes::OpAccessElementEnd as u8 );
                 }
+
+                let register : u8  = self.free_reg;
+                self.free_reg = (self.free_reg + 1) % 8;
+                self.program.push(register);
                 
-                return Some(8);
+                return Some(register);
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
