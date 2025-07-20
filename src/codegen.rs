@@ -2,6 +2,8 @@
 #![allow(unused_parens)]
 use std::{array, collections::HashMap, hash::Hash, u16};
 
+//TODO: Change how VarType + Reg code is stored in memory (1 byte for VarType, another for Reg)
+
 use crate::parser::ExprAST;
 use crate::lexer::Token;
 use num::{self, range};
@@ -579,9 +581,9 @@ pub enum OpCodes {
 
 pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u64>,
-    // Key is variable name, Value is (Memory Block, VarType, Variable Id)
+    /// Key is variable name, Value is (Memory Block, VarType, Variable Id)
     pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
-    // Key is variable name, Value is (Memory Block, ElementType, Variable Id)
+    /// Key is variable name, Value is (Memory Block, ElementType, Variable Id)
     pub listLookUp: HashMap<String, (u128, VarTypes, u64)>,
     pub program: Vec<u8>,
     pub curType: VarTypes,
@@ -1016,7 +1018,7 @@ impl ASTConverter {
                     self.program.push( 0 | OpCodes::OpAccessElementEnd as u8 );
                 }
                 
-                return param_reg;
+                return Some(8);
             }
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
