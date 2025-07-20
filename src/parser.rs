@@ -226,8 +226,7 @@ impl<'a> Parser <'a>{
             return self.LogError("Expected a ':' here");
         }
         self.getNewToken(); //Consume ':'
-        //TODO: Change body to allow multiple statments
-        // let funcBody = self.ParseExpr().expect("Could not parse body");
+
         let mut funcBody = Vec::<ExprAST>::new();
         while self.current_token.unwrap() != Token::FuncEnd{
             let curExpr = self.ParseExpr();
@@ -367,10 +366,13 @@ impl<'a> Parser <'a>{
     pub fn ParseIdentExpr(&mut self) -> Option<ExprAST>{
         let IdName = self.lexer.slice().to_owned();
         self.getNewToken(); //Consume Ident
-        if self.current_token.is_none() || !vec![Token::OpeningParenthesis, Token::FuncBegin, Token::OpenSquareBracket].contains(&self.current_token.unwrap()) {
+        
+        if (self.current_token.is_none()) {
             return Some(ExprAST::VariableExpr(IdName));
         }
-        if self.current_token.unwrap() == Token::OpeningParenthesis {
+
+        match self.current_token.unwrap()  {
+           Token::OpeningParenthesis => {
             self.getNewToken(); //Consume '('
             let mut newArgs: Vec<ExprAST> = Vec::new();
             if self.current_token.unwrap()!= Token::ClosingParenthesis {
@@ -388,12 +390,11 @@ impl<'a> Parser <'a>{
             }
             self.getNewToken(); //Consume ')'
             return Some(ExprAST::CallExpr { func_name: IdName, parameters: newArgs.clone() })
-        }
-
-        if self.current_token.unwrap() == Token::OpenSquareBracket {
+           },
+           Token::OpenSquareBracket => {
             let mut array_indexes: Vec<Box<ExprAST>> = Vec::new();
-            //consumes [
             loop {
+                //consumes [
                 self.getNewToken();
                 let elementId = self.ParseUnaryExpr().expect("Could not parse element index");
                 array_indexes.push(Box::new(elementId));
@@ -407,24 +408,20 @@ impl<'a> Parser <'a>{
                 }
             }
             return Some(ExprAST::ElementAccess { array_name: IdName, element_indexes: array_indexes.clone() })
-        }
-
-        if self.current_token.unwrap() == Token::FuncBegin {
+           },
+           Token::FuncBegin => {
             // consume :
             self.getNewToken();
             let mut TypeName = self.lexer.slice().to_owned();
             // consumes type
             self.getNewToken();
-            // if self.current_token.unwrap() == Token::CloseSquareBracket {
-            //     self.getNewToken();
-            //     // TypeName.push('[');
-            //     TypeName.push(']');
-            // }
             while [Token::OpenSquareBracket, Token::CloseSquareBracket].contains(&self.current_token.unwrap()) {
                 TypeName.push_str(self.lexer.slice());
                 self.getNewToken();
             }
             return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });
+           },
+           _ => {return Some(ExprAST::VariableExpr(IdName));}
         }
 
         return  None;

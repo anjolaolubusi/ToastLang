@@ -8,7 +8,6 @@ use num::{self, range};
 use num_derive::{self, FromPrimitive};
 use multimap::MultiMap;
 
-
 // Holds memory of function
 #[derive(Debug, Clone)]
 pub struct MemoryBlock {
@@ -39,7 +38,6 @@ pub struct VMCore {
     pub curFunctionId: usize,
     pub curType: VarTypes,
 }
-
 
 impl VMCore {
     pub fn getSystemFunctions() -> MultiMap<usize, (usize, Vec<VarTypes>)> {
@@ -608,7 +606,6 @@ pub enum VarTypes{
 pub enum SystemFunctions{
     printFunction=0,
 }
-
 
 impl ASTConverter {
     pub fn new() -> Self{
