@@ -48,6 +48,7 @@ impl VMCore {
         systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::FloatType].to_vec() ));
         systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::CharType].to_vec() ));
         systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayType].to_vec() ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayRef].to_vec() ));
 
 
         return systemFunctions.clone();
@@ -96,6 +97,33 @@ impl VMCore {
                 print!("{:?}", (scalarVal as u8) as char);
             },
             _ => println!("Unimplemented type")
+        }
+    }
+    
+    pub fn printArray(&self, array_id: usize){
+        let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get( array_id ).unwrap().clone();
+        match arr.0 {
+            VarTypes::CharType => {
+                let string_vec: Vec<u16> = arr.1.into_iter().map(|x| x as u16).collect();
+                print!("{:?}", String::from_utf16(string_vec.as_slice()).unwrap())
+            },
+            VarTypes::FloatType => {
+                print!("[");
+                for ele in arr.1 {
+                    self.printScalar(ele, arr.0);
+                    print!(",")
+                }
+                print!("]");
+            },
+            VarTypes::ArrayRef => {
+                print!("[");
+                for ele in arr.1 {
+                    self.printArray(ele as usize);
+                    print!(",")
+                }
+                print!("]");
+            }
+            _ => {println!("Unimplemented variable type");}
         }
     }
 
@@ -251,30 +279,16 @@ impl VMCore {
                     let systemFunction : SystemFunctions = num::FromPrimitive::from_usize(func_data[0].0).unwrap();
                     match systemFunction {
                         SystemFunctions::printFunction => {
-                            let firstParam = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&0).unwrap();
+                            let param_id : u64 = (self.memoryList.get(self.curMemoryId).unwrap().variableLookup.len()-1) as u64;
+                            let firstParam = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&param_id).unwrap();
                             self.registers[8 as usize] = firstParam.1;
                             if func_data.contains( &(0 as usize, [firstParam.0].to_vec()) ){
                                 if firstParam.0 == VarTypes::ArrayType {
-                                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(firstParam.1 as usize).unwrap().clone();
-                                    match arr.0 {
-                                        VarTypes::CharType => {
-                                            let string_vec: Vec<u16> = arr.1.into_iter().map(|x| x as u16).collect();
-                                            println!("{:?}", String::from_utf16(string_vec.as_slice()).unwrap())
-                                        },
-                                        VarTypes::FloatType => {
-                                            print!("[");
-                                            for ele in arr.1 {
-                                                self.printScalar(ele, arr.0);
-                                                print!(",")
-                                            }
-                                            print!("]\n");
-                                        }
-                                        _ => {println!("Unimplemented variable type");}
-                                    }
+                                    self.printArray(firstParam.1 as usize);
                                 }else{
                                     self.printScalar(firstParam.1, firstParam.0);
-                                    print!("\n");
                                 }
+                                print!("\n");
                             }
                         }
                     }
@@ -789,13 +803,29 @@ impl ASTConverter {
                 let varIdTuple = self.varLookUp.get(&name).unwrap().clone();
 
                 //Set the register to load into
-                let register : u8  = self.free_reg;
+                let mut register : u8  = self.free_reg;
                 self.free_reg = (self.free_reg + 1) % 8;
 
                 let mut varId: u64 = 0;
 
                 if varIdTuple.0 != self.curMemoryBlock {
-                    panic!("Variable does not exist in memory block");
+                    // panic!("Variable does not exist in memory block");
+                    byteCode = 0 | (OpCodes::OpCopyVarToNewMemoryBlock as u8);
+                    self.program.push(byteCode);
+                    byteCode = 0;
+                    byteCode = byteCode | varIdTuple.1 as u8;
+                    self.program.push(byteCode);
+
+                    for i in range(0, 8){
+                        let shift: u8 = 56 - 8*i;
+                        self.program.push( ((varIdTuple.2 >> shift) & 0xFF) as u8);    
+                    }
+
+                    byteCode = 0;
+
+                    // register  = self.free_reg;
+                    // self.free_reg = (self.free_reg + 1) % 8;
+
                 }
                 varId = varIdTuple.2;
                 byteCode = byteCode | OpCodes::OpLoadVar as u8;
@@ -966,6 +996,7 @@ impl ASTConverter {
                     self.program.push( ((funcId >> shift) & 0xFF) as u8);    
                 }
 
+                self.curMemoryBlock += 1;
                 //Loads function paramters
                 let mut param_reg :Option<u8> = Some(self.free_reg);
                 for param in parameters {
@@ -997,7 +1028,6 @@ impl ASTConverter {
                     }
                 }
                 bytecode = 0 |  (OpCodes::OpEndParamLoad as u8);
-                self.curMemoryBlock += 1;
                 self.program.push(bytecode);
                 self.curMemoryBlock -= 1;
                 return param_reg;
