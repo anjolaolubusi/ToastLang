@@ -448,6 +448,11 @@ impl VMCore {
                         memoryList.get_mut(self.curMemoryId).unwrap().variableLookup.insert(newVarId as u64, varTuple);
                     }
                 }
+            },
+            OpCodes::OpReturn => {
+                self.pc += 1;
+                let reg = program[self.pc];
+                self.registers[8] = self.registers[reg as usize];
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
@@ -596,6 +601,7 @@ pub enum OpCodes {
     OpCopyVarToNewMemoryBlock,
     OpLoadMultiDimensionalArrayElement,
     OpEndMultiDimensionalArrayElement,
+    OpReturn
 }
 
 pub struct ASTConverter {
@@ -1058,7 +1064,21 @@ impl ASTConverter {
                 self.program.push(register);
                 
                 return Some(register);
-            }
+            },
+            // Add Variable Type With the Return Data
+            ExprAST::ReturnExpr(return_val) => {
+                let param_reg = self.ConvertExprToByteCode(*return_val);
+                let mut byteCode: u8 = 0;
+
+                if param_reg.is_some() {
+                    byteCode = 0 | (OpCodes::OpReturn as u8);
+                    self.program.push(byteCode);
+                    byteCode = 0 | param_reg.unwrap();
+                    self.program.push(byteCode);
+                    return param_reg;
+                }
+                panic!("Error processing return value");
+            },
             _ => {println!("Could not convert expression to bytecode"); return None;}
         }
     }

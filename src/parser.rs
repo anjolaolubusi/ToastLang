@@ -81,7 +81,8 @@ pub enum ExprAST {
     ElementAccess{
         array_name: String,
         element_indexes: Vec<Box<ExprAST>>
-    }
+    },
+    ReturnExpr(Box<ExprAST>)
 }
 
 // impl<T: PartialEq, U: PartialEq> PartialEq for ExprAST {
@@ -227,6 +228,8 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //Consume ':'
 
+        //Add Possible Type Cast
+
         let mut funcBody = Vec::<ExprAST>::new();
         while self.current_token.unwrap() != Token::FuncEnd{
             let curExpr = self.ParseExpr();
@@ -345,6 +348,11 @@ impl<'a> Parser <'a>{
             Token::Comment => self.ParseSingleLineComment(),
             Token::MultilineCommentBegin => self.ParseMultiLineComment(),
             Token::VarDeclare => self.ParseVarDeclar(),
+            Token::Return => {
+                self.getNewToken(); // Consume 'return'
+                let val = self.ParseExpr().expect("Could not parse parameter");
+                return Some(ExprAST::ReturnExpr( Box::new(val.clone())));
+            }
             _ => {
                 println!("Unkown Token: {:?} ", self.current_token.unwrap());
                 return self.LogError("Unkown Token");
@@ -545,6 +553,8 @@ impl<'a> Parser <'a>{
         } else {return self.LogError("Error caused by wrong Expr variant");}
     }
 
+    // pub fn ParseReturn(&mut self)
+
 }
 
 mod tests {
@@ -664,6 +674,16 @@ mod tests {
         let test = parser.parse();
         println!("{:?}", test);
         let true_val = ExprAST::ElementAccess { array_name: "a".to_string(), element_indexes: [Box::new(ExprAST::NumberExpr(0 as f64)), Box::new(ExprAST::NumberExpr(1 as f64)),  Box::new(ExprAST::NumberExpr(2 as f64))].to_vec() };
+        assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val );
+    }
+
+    #[test]
+    fn parseReturn(){
+        let source = "return a";
+        let mut parser = Parser::new(source);
+        let test = parser.parse();
+        println!("{:?}", test);
+        let true_val = ExprAST::ReturnExpr(Box::new(ExprAST::VariableExpr("a".to_string())));
         assert_eq!(test.unwrap().first().unwrap().to_owned(), true_val );
     }
 }

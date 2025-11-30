@@ -21,6 +21,8 @@ pub enum Token {
     ///Token for 'endif' keyword
     #[token("endif")]
     EndIf,    
+    #[token("return")]
+    Return,    
     #[token("(")]
     OpeningParenthesis,
     #[token(")")]
