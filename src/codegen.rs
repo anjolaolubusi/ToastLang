@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-use std::{array, collections::HashMap, hash::Hash, u16};
+use std::{array, collections::{HashMap, btree_map::Values}, hash::Hash, u16};
 
 //TODO: Change how VarType + Reg code is stored in memory (1 byte for VarType, another for Reg)
 
@@ -34,22 +34,21 @@ pub struct VMCore {
     pub pc: usize,
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
-    /// Key is function Id, Value is (Start pc value, list of param types)
-    pub funcList: MultiMap<usize, (usize, Vec<VarTypes>)>,
+    /// Key is function Id, Value is (Start pc value, list of param types, Return Type)
+    pub funcList: MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)>,
     pub curMemoryId: usize,
     pub curFunctionId: usize,
     pub curType: VarTypes,
 }
 
 impl VMCore {
-    pub fn getSystemFunctions() -> MultiMap<usize, (usize, Vec<VarTypes>)> {
-        let mut systemFunctions : MultiMap<usize, (usize, Vec<VarTypes>)> = MultiMap::new();
+    pub fn getSystemFunctions() -> MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)> {
+        let mut systemFunctions : MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)> = MultiMap::new();
 
-        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::FloatType].to_vec() ));
-        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::CharType].to_vec() ));
-        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayType].to_vec() ));
-        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayRef].to_vec() ));
-
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::FloatType].to_vec(), VarTypes::NullType ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::CharType].to_vec() , VarTypes::NullType ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayType].to_vec(), VarTypes::NullType ));
+        systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::ArrayRef].to_vec() , VarTypes::NullType ));
 
         return systemFunctions.clone();
     }
@@ -144,6 +143,7 @@ impl VMCore {
                         let reg = (byteCode >> 5) & 7;
                         let num: u64 = self.get64BitVal(program);
                         self.registers[reg as usize] = num;
+                        self.registers[8] = num;
                         // println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
                     },
                     VarTypes::CharType => {
@@ -153,6 +153,7 @@ impl VMCore {
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
                         self.registers[reg as usize] = charBit as u64;
+                        self.registers[8] = charBit as u64;
                         // println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     }
                     _ => panic!("Unkown Type")
@@ -247,8 +248,10 @@ impl VMCore {
                     }
                 }
                 self.pc += 1;
+                let funcVarType: VarTypes = num::FromPrimitive::from_u8(program[self.pc]).unwrap();
+                self.pc += 1;
                 let startPCval = self.pc;
-                self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone()));
+                self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone(), VarTypes::NullType));
                 while program[self.pc] != (OpCodes::OpEndFunc as u8) {
                     self.pc += 1;
                 }
@@ -281,12 +284,13 @@ impl VMCore {
                         SystemFunctions::printFunction => {
                             let param_id : u64 = (self.memoryList.get(self.curMemoryId).unwrap().variableLookup.len()-1) as u64;
                             let firstParam = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&param_id).unwrap();
-                            self.registers[8 as usize] = firstParam.1;
-                            if func_data.contains( &(0 as usize, [firstParam.0].to_vec()) ){
+                            // self.registers[8 as usize] = firstParam.1;
+                            if func_data.contains( &(0 as usize, [firstParam.0].to_vec(), VarTypes::NullType) ){
                                 if firstParam.0 == VarTypes::ArrayType {
                                     self.printArray(firstParam.1 as usize);
                                 }else{
-                                    self.printScalar(firstParam.1, firstParam.0);
+                                    // self.printScalar(firstParam.1, firstParam.0);
+                                    self.printScalar(self.registers[8], firstParam.0);
                                 }
                                 print!("\n");
                             }
@@ -450,6 +454,9 @@ impl VMCore {
                 }
             },
             OpCodes::OpReturn => {
+                self.pc += 1;
+                let returnType : VarTypes = num::FromPrimitive::from_u8(program[self.pc]).unwrap();
+                self.curType = returnType;
                 self.pc += 1;
                 let reg = program[self.pc];
                 self.registers[8] = self.registers[reg as usize];
@@ -651,6 +658,15 @@ impl ASTConverter {
             curFuncId: 1,
             free_reg: 0
         }
+    }
+
+    pub fn GetVarTypeFromString(&mut self, var_text: String) -> Option<VarTypes> {
+        match var_text.as_str() {
+            "number" => Some(VarTypes::FloatType),
+            "string" => Some(VarTypes::CharType),
+            "char" => Some(VarTypes::CharType),
+            _ => panic!("Can not compile type")
+            }
     }
 
     pub fn ConvertExprToByteCode(&mut self, expr: ExprAST) -> Option<u8> {
@@ -856,12 +872,13 @@ impl ASTConverter {
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
                     let array_dim_count = typeName.split("[]").count() - 1;
                     let typeName_cleaned = typeName.replace("[]", "");
-                    let mut valVarType = match typeName_cleaned.as_str() {
-                        "number" => VarTypes::FloatType,
-                        "char" => VarTypes::CharType,
-                        "string" => VarTypes::CharType,
-                        _ => panic!("Can not compile variable type")
-                    };
+                    // let mut valVarType = match typeName_cleaned.as_str() {
+                    //     "number" => VarTypes::FloatType,
+                    //     "char" => VarTypes::CharType,
+                    //     "string" => VarTypes::CharType,
+                    //     _ => panic!("Can not compile variable type")
+                    // };
+                    let mut valVarType = self.GetVarTypeFromString(typeName_cleaned.clone()).unwrap();
                     let isArray = (array_dim_count > 0);
                     self.curType = valVarType;
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
@@ -938,7 +955,7 @@ impl ASTConverter {
                     _ => {return None;}
                 }
             },
-            ExprAST::FuncExpr { name, args, body } => {
+            ExprAST::FuncExpr { name, args, return_type, body } => {
                 let mut bytecode: u8 = 0;
                 let oldMemoryBlockId = self.curMemoryBlock;
                 let oldNumVarId = self.curNumVarId;
@@ -958,11 +975,12 @@ impl ASTConverter {
                 // Loop through arguments and load them in to the function def
                 for param in args{
                     if let ExprAST::VariableHeader { name, typeName } = param {
-                        let varVaribleType = match typeName.as_str() {
-                            "number" => VarTypes::FloatType,
-                            "string" => VarTypes::CharType,
-                            _ => panic!("Can not compile type")
-                            };
+                        // let varVaribleType = match typeName.as_str() {
+                        //     "number" => VarTypes::FloatType,
+                        //     "string" => VarTypes::CharType,
+                        //     _ => panic!("Can not compile type")
+                        //     };
+                        let varVaribleType = self.GetVarTypeFromString(typeName.clone()).unwrap();
                         bytecode = 0; 
                         bytecode = bytecode | (OpCodes::OpAddFuncParameter as u8);
                         self.program.push(bytecode);
@@ -972,6 +990,12 @@ impl ASTConverter {
                         self.curNumVarId += 1;
                     }
                 }
+
+                let mut funcVarType : VarTypes = VarTypes::NullType;
+                if return_type.is_some() {
+                    funcVarType = self.GetVarTypeFromString(return_type.unwrap()).unwrap();
+                }
+                self.program.push(funcVarType as u8);
 
                 // Parse through body
                 let mut lastReg: u8 = 0;
@@ -1072,6 +1096,8 @@ impl ASTConverter {
 
                 if param_reg.is_some() {
                     byteCode = 0 | (OpCodes::OpReturn as u8);
+                    self.program.push(byteCode);
+                    byteCode = 0 | (self.curType as u8);
                     self.program.push(byteCode);
                     byteCode = 0 | param_reg.unwrap();
                     self.program.push(byteCode);
@@ -1189,7 +1215,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10].to_vec();
+        let true_val: Vec<u8> = [8, 1, 9, 1, 0, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
@@ -1219,7 +1245,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [8, 1, 9, 1, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10, 11, 0, 0, 0, 0, 0, 0, 0, 1, 1, 65, 64, 64, 0, 0, 0, 0, 0, 0, 6, 65, 12].to_vec();
+        let true_val: Vec<u8> = [8, 1, 9, 1, 0, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 33, 64, 89, 0, 0, 0, 0, 0, 0, 4, 1, 10, 11, 0, 0, 0, 0, 0, 0, 0, 1, 1, 65, 64, 64, 0, 0, 0, 0, 0, 0, 6, 65, 12].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 

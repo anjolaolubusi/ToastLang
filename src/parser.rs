@@ -74,6 +74,7 @@ pub enum ExprAST {
         name: String,
         ///List of Arugments
         args: Vec<ExprAST>,
+        return_type: Option<String>,
         ///Body of Functions
         // body: Option<Box<ExprAST>>
         body: Vec<ExprAST>
@@ -243,7 +244,7 @@ impl<'a> Parser <'a>{
         }
         self.getNewToken(); //Consume End
 
-        if let ExprAST::FuncExpr { name: _, args: _, ref mut body } = prototype {
+        if let ExprAST::FuncExpr { name: _, args: _, return_type: _, ref mut body } = prototype {
             *body = funcBody.clone();
         }
 
@@ -286,7 +287,8 @@ impl<'a> Parser <'a>{
             return self.LogError("Expected a ')' here");
         }
         self.getNewToken(); //Consume ')'
-        let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, body: Vec::<ExprAST>::new() };
+        let return_type: Option<String> = None;
+        let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, return_type: return_type, body: Vec::<ExprAST>::new() };
         return Some(funcExpression);
         
     }
@@ -586,11 +588,13 @@ mod tests {
         let true_val = [ 
             ExprAST::FuncExpr { 
                 name: "foo".to_string(), 
+                return_type: None,
                 args: [ExprAST::VariableHeader { name: "a".to_string(), typeName: "number".to_string() }, ExprAST::VariableHeader { name: "b".to_string(), typeName: "number".to_string() }].to_vec(), 
                 body: [ExprAST::BinaryExpr { op: (crate::lexer::Token::Minus), lhs: Box::new(ExprAST::VariableExpr("a".to_string())), rhs: Box::new(ExprAST::VariableExpr("b".to_string())), opChar: "-".to_string() }].to_vec()
             },
             ExprAST::FuncExpr { 
                 name: "boo".to_string(), 
+                return_type: None,
                 args: [ExprAST::VariableHeader { name: "a".to_string(), typeName: "number".to_string() }, ExprAST::VariableHeader { name: "b".to_string(), typeName: "number".to_string() }].to_vec(), 
                 body: [ExprAST::BinaryExpr { op: (crate::lexer::Token::Plus), lhs: Box::new(ExprAST::VariableExpr("a".to_string())), rhs: Box::new(ExprAST::VariableExpr("b".to_string())), opChar: "+".to_string() }].to_vec()
             },
