@@ -287,7 +287,17 @@ impl<'a> Parser <'a>{
             return self.LogError("Expected a ')' here");
         }
         self.getNewToken(); //Consume ')'
-        let return_type: Option<String> = None;
+        let mut return_type: Option<String> = None;
+
+        if self.current_token.unwrap() == Token::PointTo {
+            self.getNewToken(); //Consume  '->'
+            if self.current_token.unwrap() != Token::Ident {
+                self.LogError("No function return type here");
+            }
+            return_type = Some(self.lexer.slice().to_owned());
+            self.getNewToken(); // Consume Type
+        }
+
         let funcExpression : ExprAST = ExprAST::FuncExpr { name: prototypeName, args: newArgs, return_type: return_type, body: Vec::<ExprAST>::new() };
         return Some(funcExpression);
         

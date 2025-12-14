@@ -251,7 +251,7 @@ impl VMCore {
                 let funcVarType: VarTypes = num::FromPrimitive::from_u8(program[self.pc]).unwrap();
                 self.pc += 1;
                 let startPCval = self.pc;
-                self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone(), VarTypes::NullType));
+                self.funcList.insert(self.curFunctionId, (startPCval, paramTypes.clone(), funcVarType));
                 while program[self.pc] != (OpCodes::OpEndFunc as u8) {
                     self.pc += 1;
                 }
