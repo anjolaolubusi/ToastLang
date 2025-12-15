@@ -459,7 +459,19 @@ impl VMCore {
                 self.curType = returnType;
                 self.pc += 1;
                 let reg = program[self.pc];
-                self.registers[8] = self.registers[reg as usize];
+                match self.curType {
+                    VarTypes::ArrayType => {
+                        if self.curMemoryId - 1 > 0 {
+                            let vec_arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().clone();
+                            self.memoryList.get_mut(self.curMemoryId -1).unwrap().listLookup.push(vec_arr);
+                            self.registers[8] = (self.memoryList.get(self.curMemoryId-1).unwrap().listLookup.len()-1) as u64;
+                        }
+                    },
+                    _ => {
+                        self.registers[8] = self.registers[reg as usize];
+                    }
+                }
+
             }
             _ => println!("No implementation for opcode: {:#?}", opCode)
         }
