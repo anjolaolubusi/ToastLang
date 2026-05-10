@@ -87,6 +87,24 @@ impl VMCore {
         }
     }
 
+    pub fn getArrayInMultiDimensionalArray(&self, memoryId : usize, array_ref: (VarTypes, Vec<u64>)) -> Vec<(VarTypes, Vec<u64>)>{
+        let mut arr_of_array : Vec<(VarTypes, Vec<u64>)> = Vec::new();
+        for array_index in 0..array_ref.1.len() {
+            let x = self.memoryList.get(memoryId).unwrap().listLookup.get(*array_ref.1.get(array_index).unwrap() as usize).unwrap();
+            match &x.0 {
+                VarTypes::ArrayRef => {
+                    arr_of_array = self.getArrayInMultiDimensionalArray(memoryId, x.clone());
+                },
+                _ => {
+                    arr_of_array.push(x.clone());
+                }
+            }
+            arr_of_array.push(array_ref.clone());
+        }
+        return arr_of_array;
+    }
+
+
     pub fn printScalar(&self, scalarVal: u64, scalarType: VarTypes) {
         match scalarType {
             VarTypes::FloatType => {
@@ -459,13 +477,48 @@ impl VMCore {
                 self.curType = returnType;
                 self.pc += 1;
                 let reg = program[self.pc];
+                let mut target_memoryId = 0;
+                if self.curMemoryId == 0 as usize {
+                    target_memoryId = self.curMemoryId;
+                } else {
+                    target_memoryId =  self.curMemoryId - 1;
+                }
                 match self.curType {
                     VarTypes::ArrayType => {
-                        if self.curMemoryId - 1 > 0 {
+                        // if self.curMemoryId - 1 > 0 {
                             let vec_arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().clone();
-                            self.memoryList.get_mut(self.curMemoryId -1).unwrap().listLookup.push(vec_arr);
-                            self.registers[8] = (self.memoryList.get(self.curMemoryId-1).unwrap().listLookup.len()-1) as u64;
-                        }
+                            match &vec_arr.0 {
+                                VarTypes::ArrayRef => {
+                                println!("list lookup: {:?}", self.memoryList.get(self.curMemoryId).unwrap());
+                                let mut multi_dimenional_array : Vec<(VarTypes, Vec<u64>)> = self.getArrayInMultiDimensionalArray(self.curMemoryId, vec_arr.clone());
+                                println!("Multi Dimensional Array: {:?}", &multi_dimenional_array);
+                                let first_element_from_old_memory = *multi_dimenional_array.iter().find(|item| {
+                                    if let VarTypes::ArrayRef = item.0 {
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }).unwrap().1.first().unwrap();
+                                for i in 0..multi_dimenional_array.len() {
+                                    match  &multi_dimenional_array.get(i).unwrap().0 {
+                                        VarTypes::ArrayRef => {
+                                            let newArray = multi_dimenional_array.get(i).unwrap().1.clone().into_iter().map(|x| x - first_element_from_old_memory + self.memoryList.get(target_memoryId).unwrap().listLookup.len() as u64).collect();
+                                            multi_dimenional_array.get_mut(i).unwrap().1 = newArray;
+                                        },
+                                        _ => {continue}
+                                    }
+                                }
+                                // println!("Multi Dimensional Array: {:?}", &multi_dimenional_array);
+                                self.memoryList.get_mut(target_memoryId).unwrap().listLookup.extend(multi_dimenional_array);
+                                self.registers[8] = (self.memoryList.get(target_memoryId).unwrap().listLookup.len()-1) as u64;
+                                self.curType = VarTypes::ArrayType;
+                            },
+                                _ => {
+                                    self.memoryList.get_mut(target_memoryId).unwrap().listLookup.push(vec_arr);
+                                    self.registers[8] = (self.memoryList.get(target_memoryId).unwrap().listLookup.len()-1) as u64;
+                                }
+                            }
+                        // }
                     },
                     _ => {
                         self.registers[8] = self.registers[reg as usize];
