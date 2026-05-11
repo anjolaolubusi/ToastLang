@@ -3,6 +3,9 @@
 use std::{array, collections::{HashMap, btree_map::Values}, hash::Hash, u16};
 
 //TODO: Change how VarType + Reg code is stored in memory (1 byte for VarType, another for Reg)
+//TODO: Add pub constant for bit masking values
+//TODO: Add type aliases
+//TODO: Add Handing of type[] variable declares
 
 use crate::parser::ExprAST;
 use crate::lexer::Token;
@@ -10,11 +13,13 @@ use num::{self, range};
 use num_derive::{self, FromPrimitive};
 use multimap::MultiMap;
 
+use regex::Regex;
+
 // Holds memory of function
 #[derive(Debug, Clone)]
 pub struct MemoryBlock {
     pub variableLookup: HashMap<u64, (VarTypes, u64)>,
-    pub listLookup: Vec<(VarTypes, Vec<u64>)>
+    pub listLookup: Vec<(VarTypes, Vec<u64>, Vec<u8>)>
     
 }
 
@@ -87,8 +92,8 @@ impl VMCore {
         }
     }
 
-    pub fn getArrayInMultiDimensionalArray(&self, memoryId : usize, array_ref: (VarTypes, Vec<u64>)) -> Vec<(VarTypes, Vec<u64>)>{
-        let mut arr_of_array : Vec<(VarTypes, Vec<u64>)> = Vec::new();
+    pub fn getArrayInMultiDimensionalArray(&self, memoryId : usize, array_ref: (VarTypes, Vec<u64>, Vec<u8>)) -> Vec<(VarTypes, Vec<u64>, Vec<u8>)>{
+        let mut arr_of_array : Vec<(VarTypes, Vec<u64>, Vec<u8>)> = Vec::new();
         for array_index in 0..array_ref.1.len() {
             let x = self.memoryList.get(memoryId).unwrap().listLookup.get(*array_ref.1.get(array_index).unwrap() as usize).unwrap();
             match &x.0 {
@@ -223,6 +228,18 @@ impl VMCore {
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
                 let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x0F)).unwrap();
                 curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
+
+                if variableType == VarTypes::ArrayType {
+                    self.pc += 1;
+                    let dim_num = program[self.pc] as usize;
+                    let mut dim_list: Vec<u8> = vec![0; dim_num];
+                    self.pc += 1;
+                    for i in 0..dim_num {
+                        dim_list[i] = program[self.pc];
+                        self.pc += 1;
+                    }
+                    curMemory.listLookup.get_mut(self.registers[reg as usize] as usize).unwrap().2 = dim_list;
+                }
             },
             OpCodes::OpLoadVar => {
                 self.pc += 1;
@@ -336,7 +353,7 @@ impl VMCore {
                 
                 match elementType {
                     VarTypes::CharType => {
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect()));
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, array_vec.clone().into_iter().map(|x| x as u64).collect(), vec![array_vec.clone().len() as u8]));
                         self.curType = VarTypes::CharType;
                     },
                     VarTypes::FloatType => {
@@ -352,7 +369,7 @@ impl VMCore {
                                 new_arr.push(num);
                             }
                         }
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, new_arr));
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((elementType, new_arr.clone(), vec![new_arr.clone().len() as u8; 1]));
                     },
                     VarTypes::ArrayType => {
                         self.pc = oldPC;
@@ -377,7 +394,8 @@ impl VMCore {
                             }
                             self.pc += 1;
                         }
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((VarTypes::ArrayRef, new_arr));
+                        //TODO: Rework How Multidimensional array are accessed and created
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((VarTypes::ArrayRef, new_arr, vec![1, 2, 3]));
 
                     }
                     _ => println!("Unkown Element Type")
@@ -421,7 +439,7 @@ impl VMCore {
                             let arr_ref_index = f64::from_bits(*elements_indexes.get(i).unwrap());
                             let list_index =    *cur_arr.get(arr_ref_index as usize).unwrap() as usize;
                             let cur_memory = self.memoryList.get(self.curMemoryId).unwrap();
-                            let cur_list: Option<&(VarTypes, Vec<u64>)> = cur_memory.listLookup.get(list_index);
+                            let cur_list: Option<&(VarTypes, Vec<u64>, Vec<u8>)> = cur_memory.listLookup.get(list_index);
                             cur_arr = cur_list.unwrap().1.clone();
                         }
                         let num = cur_arr.get(f64::from_bits(element_index) as usize).unwrap();
@@ -458,7 +476,7 @@ impl VMCore {
 
                 match varTuple.0 {
                     VarTypes::ArrayType => {
-                        let var_list: (VarTypes, Vec<u64>) = memoryList.get(self.curMemoryId - 1).unwrap().listLookup.get(varTuple.1 as usize).unwrap().clone();
+                        let var_list: (VarTypes, Vec<u64>, Vec<u8>) = memoryList.get(self.curMemoryId - 1).unwrap().listLookup.get(varTuple.1 as usize).unwrap().clone();
                         let mut newListId: usize = memoryList.get(self.curMemoryId).unwrap().listLookup.len();
                         if newListId > 0 {
                             newListId -= 1;
@@ -490,7 +508,7 @@ impl VMCore {
                             match &vec_arr.0 {
                                 VarTypes::ArrayRef => {
                                 println!("list lookup: {:?}", self.memoryList.get(self.curMemoryId).unwrap());
-                                let mut multi_dimenional_array : Vec<(VarTypes, Vec<u64>)> = self.getArrayInMultiDimensionalArray(self.curMemoryId, vec_arr.clone());
+                                let mut multi_dimenional_array : Vec<(VarTypes, Vec<u64>, Vec<u8>)> = self.getArrayInMultiDimensionalArray(self.curMemoryId, vec_arr.clone());
                                 println!("Multi Dimensional Array: {:?}", &multi_dimenional_array);
                                 let first_element_from_old_memory = *multi_dimenional_array.iter().find(|item| {
                                     if let VarTypes::ArrayRef = item.0 {
@@ -673,15 +691,17 @@ pub enum OpCodes {
     OpCopyVarToNewMemoryBlock,
     OpLoadMultiDimensionalArrayElement,
     OpEndMultiDimensionalArrayElement,
-    OpReturn
+    OpReturn,
+    OpLoadArrayDimensions,
+    OpEndArrayDimensions,
 }
 
 pub struct ASTConverter {
     pub funcIdTable: HashMap<String, u64>,
     /// Key is variable name, Value is (Memory Block, VarType, Variable Id)
     pub varLookUp: HashMap<String, (u128, VarTypes, u64)>,
-    /// Key is variable name, Value is (Memory Block, ElementType, Variable Id)
-    pub listLookUp: HashMap<String, (u128, VarTypes, u64)>,
+    /// Key is variable name, Value is (Memory Block, ElementType, Variable Id. list of dimension sizes)
+    pub listLookUp: HashMap<String, (u128, VarTypes, u64, Vec<u64>)>,
     pub program: Vec<u8>,
     pub curType: VarTypes,
     pub curMemoryBlock: u128,
@@ -935,8 +955,9 @@ impl ASTConverter {
                 let mut byteCode: u8 = 0;
                 let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
-                    let array_dim_count = typeName.split("[]").count() - 1;
-                    let typeName_cleaned = typeName.replace("[]", "");
+                    let re = Regex::new(r"\[(\d+)\]").unwrap();
+                    let dimensions_arr: Vec<u64> = re.captures_iter(&typeName).filter_map(|cap| cap[1].parse::<u64>().ok()).collect();
+                    let typeName_cleaned = re.replace_all(&typeName, "").to_string();
                     // let mut valVarType = match typeName_cleaned.as_str() {
                     //     "number" => VarTypes::FloatType,
                     //     "char" => VarTypes::CharType,
@@ -944,22 +965,43 @@ impl ASTConverter {
                     //     _ => panic!("Can not compile variable type")
                     // };
                     let mut valVarType = self.GetVarTypeFromString(typeName_cleaned.clone()).unwrap();
-                    let isArray = (array_dim_count > 0);
+                    let isArray = (dimensions_arr.len() > 0);
                     self.curType = valVarType;
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
+                    
                     if isArray || typeName_cleaned.as_str() == "string" {
-                        self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId));
+                        self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId, dimensions_arr.clone()));
                         self.curNumListId += 1;
                         valVarType = VarTypes::ArrayType;
                     }
                         self.varLookUp.insert(name, (self.curMemoryBlock, valVarType, self.curNumVarId));
                         self.curNumVarId += 1;
 
+                    //------
+                    byteCode = 0;
                     byteCode = byteCode | OpCodes::OpNewVar as u8;
                     self.program.push(byteCode);
                     byteCode =  0;
                     byteCode = byteCode | ((register_val as u8) << 5)  | valVarType as u8;
                     self.program.push(byteCode);
+                    byteCode = 0;
+
+                    if isArray {
+                        //Pass number of array dimensions
+                        byteCode = byteCode | dimensions_arr.len() as u8;
+                        self.program.push(byteCode);
+
+                        println!("ARRAY STUFF STARTS AT: {}", self.program.len()-1);
+                        
+                        //Pass over array dimensions
+                        for dim_arr in &dimensions_arr {
+                            byteCode = 0;
+                            byteCode = byteCode | *dim_arr as u8;
+                            self.program.push(byteCode);
+                        }
+                    }
+
+
                     return Some(register_val);
                 }
                 return None;
@@ -1241,20 +1283,20 @@ mod tests {
 
     #[test]
     fn compileArray(){
-        let source = "let arr: number[] = [1,2,3,4]";
+        let source = "let arr: number[4] = [1,2,3,4]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4].to_vec();
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 4].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
     #[test]
     fn compileAndRunArray(){
-        let source = "let arr: number[] = [1,2,3,4]";
+        let source = "let arr: number[4] = [1,2,3,4]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1364,7 +1406,7 @@ mod tests {
 
     #[test]
     fn compileElementAccessSingleDimensionalArray(){
-        let source = "let arr: number[] = [1,2,3] arr[0]";
+        let source = "let arr: number[3] = [1,2,3] arr[0]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1377,7 +1419,7 @@ mod tests {
 
     #[test]
     fn compileAndRunElementAccessSingleDimensionalArray(){
-        let source = "let arr: number[] = [1,2,3] arr[0]";
+        let source = "let arr: number[3] = [1,2,3] arr[0]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1396,7 +1438,7 @@ mod tests {
 
     #[test]
     fn compileElementAccessMultiDimensionalArray(){
-        let source = "let arr: number[] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let source = "let arr: number[3][3] = [[1,2,3], [4,5,6]] arr[1][1]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1409,7 +1451,7 @@ mod tests {
 
     #[test]
     fn compileAndRunElementAccessMultiDimensionalArray(){
-        let source = "let arr: number[] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let source = "let arr: number[3][3] = [[1,2,3], [4,5,6]] arr[1][1]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
