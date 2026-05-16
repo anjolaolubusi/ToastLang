@@ -235,9 +235,9 @@ impl VMCore {
                     let mut dim_list: Vec<u8> = vec![0; dim_num];
                     self.pc += 1;
                     for i in 0..dim_num {
-                        dim_list[i] = program[self.pc];
-                        self.pc += 1;
+                        dim_list[i] = program[self.pc+i];
                     }
+                    self.pc += dim_num - 1;
                     curMemory.listLookup.get_mut(self.registers[reg as usize] as usize).unwrap().2 = dim_list;
                 }
             },
@@ -1413,7 +1413,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18, 2].to_vec();
+        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 3, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18, 2].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
@@ -1445,7 +1445,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 4, 20, 13, 33, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 2, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18, 5].to_vec();
+        let true_val: Vec<u8> = [13, 4, 20, 13, 33, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 2, 3, 3, 16, 0, 0, 0, 0, 0, 0, 0, 2, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18, 5].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 

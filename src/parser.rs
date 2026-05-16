@@ -441,7 +441,7 @@ impl<'a> Parser <'a>{
             //     self.getNewToken();
             // }
 
-            while ![Token::Equals].contains(&self.current_token.unwrap()) {
+            while ![Token::Equals, Token::ClosingParenthesis, Token::Comma].contains(&self.current_token.unwrap()) {
                 TypeName.push_str(self.lexer.slice());
                 self.getNewToken();
             }
