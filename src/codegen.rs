@@ -374,6 +374,9 @@ impl VMCore {
                     VarTypes::ArrayType => {
                         self.pc = oldPC;
                         let mut new_arr : Vec<u64> = Vec::new();
+                        let mut oldListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
+                        let mut arr_type : VarTypes =  VarTypes::NullType;
+                        let mut arr_flattened : Vec<u64> = Vec::new();
                         while (program[self.pc] != OpCodes::OpEndArray as u8) { 
                             match num::FromPrimitive::from_u8(program[self.pc]).unwrap() {
                                 OpCodes::OpLoadMultiDimensionalArrayElement => {
@@ -381,6 +384,11 @@ impl VMCore {
                                     self.ConsumeByteCode(program, program[self.pc]);
                                 },
                                 OpCodes::OpEndMultiDimensionalArrayElement => {
+                                    //Instead pushing back list indexes we send back a list of all the elements.f
+                                    arr_flattened.append(self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().1.clone().as_mut());
+                                    arr_type = self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().0;
+                                    // dim_arr_test.push(self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().1.len());
+                                    // self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.pop();
                                     new_arr.push( (self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.len()-1) as u64 );
                                     if (self.pc+1 > program.len()){
                                         break;
@@ -395,7 +403,11 @@ impl VMCore {
                             self.pc += 1;
                         }
                         //TODO: Rework How Multidimensional array are accessed and created
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((VarTypes::ArrayRef, new_arr, vec![1, 2, 3]));
+                        //TODO: Pass through variable type + dimesnion specs
+                        let newListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
+                        
+                        // Recursive loop to get flattened array
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((arr_type, arr_flattened, vec![2,2]));
 
                     }
                     _ => println!("Unkown Element Type")
@@ -504,7 +516,7 @@ impl VMCore {
                 match self.curType {
                     VarTypes::ArrayType => {
                         // if self.curMemoryId - 1 > 0 {
-                            let vec_arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().clone();
+                            let vec_arr  = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(self.registers[reg as usize] as usize).unwrap().clone();
                             match &vec_arr.0 {
                                 VarTypes::ArrayRef => {
                                 println!("list lookup: {:?}", self.memoryList.get(self.curMemoryId).unwrap());
