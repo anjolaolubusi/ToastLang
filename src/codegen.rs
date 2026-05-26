@@ -344,7 +344,17 @@ impl VMCore {
                 let reg = (byteCode >> 5) & 7;
                 let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & 31).unwrap();
                 let mut array_vec = Vec::<u8>::new();
+                
+                let mut dim_arr = Vec::<u8>::new();
+                self.pc += 2;
+                let dim_count = program[self.pc];
                 self.pc += 1;
+                for i in 0..dim_count {
+                    dim_arr.push(program[self.pc]);
+                    self.pc += 1;
+                }
+
+               self.pc += 1;
                 let oldPC = self.pc;
                 while (program[self.pc] != OpCodes::OpEndArray as u8) {
                     array_vec.push(program[self.pc]);
@@ -374,7 +384,7 @@ impl VMCore {
                     VarTypes::ArrayType => {
                         self.pc = oldPC;
                         let mut new_arr : Vec<u64> = Vec::new();
-                        let mut oldListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
+                        // let mut oldListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
                         let mut arr_type : VarTypes =  VarTypes::NullType;
                         let mut arr_flattened : Vec<u64> = Vec::new();
                         while (program[self.pc] != OpCodes::OpEndArray as u8) { 
@@ -407,7 +417,7 @@ impl VMCore {
                         let newListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
                         
                         // Recursive loop to get flattened array
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((arr_type, arr_flattened, vec![2,2]));
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((arr_type, arr_flattened, dim_arr));
 
                     }
                     _ => println!("Unkown Element Type")
@@ -881,6 +891,38 @@ impl ASTConverter {
                 
 
                 // Adds to the program list
+                self.program.push(bytecode);
+
+                let mut dimensions_arr = Vec::<usize>::new();
+                let mut loop_element_type = elementType;
+                dimensions_arr.push(listOfExpr.len());
+                if elementType == VarTypes::ArrayType {
+                    let mut cur_list    = listOfExpr.get(0).unwrap();
+                    while loop_element_type == VarTypes::ArrayType {
+                        match cur_list {
+                            ExprAST::ListExpr(new_val) => {
+                                loop_element_type = VarTypes::ArrayType;
+                                dimensions_arr.push(new_val.len());
+                                cur_list = new_val.get(0).unwrap();
+                            },
+                            _ => {break;}
+                        }
+                        // if let ExprAST::ListExpr(new_val)  = cur_list {
+                        //     dimensions_arr.push(new_val.len());
+                        // }
+                        // cur_list = listOfExpr.get(0).unwrap();
+                    }
+                }
+
+                bytecode = OpCodes::OpLoadArrayDimensions as u8;
+                self.program.push(bytecode);
+                bytecode = dimensions_arr.len() as u8;
+                self.program.push(bytecode);
+                for i in 0..dimensions_arr.len() {
+                    bytecode = *dimensions_arr.get(i).unwrap() as u8;
+                    self.program.push(bytecode);
+                }
+                bytecode = OpCodes::OpEndArrayDimensions as u8;
                 self.program.push(bytecode);
                 
                 for i in (0..listOfExpr.len()){
