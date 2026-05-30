@@ -15,6 +15,11 @@ use multimap::MultiMap;
 
 use regex::Regex;
 
+const bitRegMask: u8 = 7;
+const bitTypeValMask: u8 = 31;
+const bitRegShift: u8 = 5;
+const regResult: usize = 8;
+
 // Holds memory of function
 #[derive(Debug, Clone)]
 pub struct MemoryBlock {
@@ -158,25 +163,25 @@ impl VMCore {
                 self.pc += 1;
                 byteCode = program[self.pc];
                 // Only grabs the first 5 bits (31 is all first 5 bits as one) of the bytecode since that is where the current value type is
-                let curType: VarTypes = num::FromPrimitive::from_u8((byteCode & 31)).unwrap();
+                let curType: VarTypes = num::FromPrimitive::from_u8((byteCode & bitTypeValMask)).unwrap();
                 match curType {
                     VarTypes::FloatType => {
                         self.curType = VarTypes::FloatType;
                         // Shifts byte code by 5 bits to the right. Masks it by 7 (00000111).
-                        let reg = (byteCode >> 5) & 7;
+                        let reg = (byteCode >> bitRegShift) & bitRegMask;
                         let num: u64 = self.get64BitVal(program);
                         self.registers[reg as usize] = num;
-                        self.registers[8] = num;
+                        self.registers[regResult] = num;
                         // println!("Float Value: {}", f64::from_bits(self.registers[reg as usize]))
                     },
                     VarTypes::CharType => {
                         self.curType = VarTypes::CharType;
                         // Only grabs the first 5 bits (31 is all first 5 bits as one) of the bytecode since that is where the current value type is
-                        let reg = (byteCode >> 5) & 7;
+                        let reg = (byteCode >> bitRegShift) & bitRegMask;
                         self.pc = self.pc + 1;
                         let charBit = program[self.pc];
                         self.registers[reg as usize] = charBit as u64;
-                        self.registers[8] = charBit as u64;
+                        self.registers[regResult] = charBit as u64;
                         // println!("Char Value: {:?}", (self.registers[reg as usize] as u8) as char);
                     }
                     _ => panic!("Unkown Type")
@@ -186,11 +191,11 @@ impl VMCore {
                 // Shifts byte code by 9 bits to the right. Masks it by 7 (00000111).
                 self.pc += 1;
                 byteCode = program[self.pc];
-                let reg1 = (byteCode >> 5) & 7;
+                let reg1 = (byteCode >> bitRegShift) & bitRegMask;
                 match self.curType {
                     VarTypes::FloatType => {
                         // Mask bytecode by 7 (00000111)
-                        let reg2 = byteCode & 7;
+                        let reg2 = byteCode & bitRegMask;
                         match opCode {
                             OpCodes::OpAdd => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) + f64::from_bits(self.registers[reg2 as usize]));},
                             OpCodes::OpSub => {self.registers[reg1 as usize] = f64::to_bits(f64::from_bits(self.registers[reg1 as usize]) - f64::from_bits(self.registers[reg2 as usize]));},
@@ -202,7 +207,7 @@ impl VMCore {
                         self.registers[8 as usize] = self.registers[reg1 as usize];
                     },
                     VarTypes::StringType => {
-                        let reg2 = byteCode & 7;
+                        let reg2 = byteCode & bitRegMask;
                         match opCode {
                             OpCodes::OpAdd => {
                                 let currMemoryList = self.memoryList.get(self.curMemoryId).unwrap();
@@ -218,13 +223,13 @@ impl VMCore {
                 }
             },
             OpCodes::OpLoadReg => {
-                let sourceRegNum = (byteCode >> 5) & 0x0F;
-                let destRegNum = (byteCode) & 7;
+                let sourceRegNum = (byteCode >> bitRegShift) & 0x0F;
+                let destRegNum = (byteCode) & bitRegMask;
                 self.registers[destRegNum as usize] = self.registers[sourceRegNum as usize];
             },
             OpCodes::OpNewVar => {
                 self.pc += 1;
-                let reg = (program[self.pc] >> 5) & 7;
+                let reg = (program[self.pc] >> bitRegShift) & bitRegMask;
                 let curMemory = self.memoryList.get_mut(self.curMemoryId).unwrap();
                 let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x0F)).unwrap();
                 curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
@@ -243,11 +248,11 @@ impl VMCore {
             },
             OpCodes::OpLoadVar => {
                 self.pc += 1;
-                let reg = (program[self.pc]  >> 5) & 7;
+                let reg = (program[self.pc]  >> bitRegShift) & bitRegMask;
                 let typeVal : VarTypes = num::FromPrimitive::from_u8(program[self.pc]  & 31).unwrap();
                 let varId: u64 = self.get64BitVal(program);
                 self.registers[reg as usize] = self.memoryList.get(self.curMemoryId).unwrap().variableLookup.get(&varId).unwrap().1;
-                self.registers[8 as usize] = self.registers[reg as usize];
+                self.registers[regResult] = self.registers[reg as usize];
                 match typeVal {
                     VarTypes::FloatType => {
                         println!("Variable Value: {}", f64::from_bits(self.registers[reg as usize]))
@@ -342,7 +347,7 @@ impl VMCore {
                 byteCode = program[self.pc];
                 self.curType = VarTypes::ArrayType;
                 let reg = (byteCode >> 5) & 7;
-                let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & 31).unwrap();
+                let elementType: VarTypes = num::FromPrimitive::from_u8(byteCode & bitTypeValMask).unwrap();
                 let mut array_vec = Vec::<u8>::new();
                 
                 let mut dim_arr = Vec::<u8>::new();
@@ -466,7 +471,7 @@ impl VMCore {
                             let num = arr.1.get(ele_pos as usize).unwrap();
                             self.pc += 1;
                             println!("Float Value: {}", f64::from_bits(*num));
-                            self.registers[8 as usize] = *num;
+                            self.registers[regResult] = *num;
                             self.registers[program[self.pc] as usize] = *num;                            
                         }
                         // let element_index: u64 = *elements_indexes.last().unwrap();
@@ -490,7 +495,7 @@ impl VMCore {
                                 let index = f64::from_bits(*elements_indexes.first().unwrap());
                                 let num = arr.1.get(index as usize).unwrap();
                                 println!("Float Value: {}", f64::from_bits(*num));
-                                self.registers[8 as usize] = *num;
+                                self.registers[regResult] = *num;
                                 self.pc += 1;
                                 let reg_final = program[self.pc];
                                 self.registers[reg_final as usize] = *num;
