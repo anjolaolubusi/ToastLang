@@ -20,11 +20,15 @@ const bitTypeValMask: u8 = 31;
 const bitRegShift: u8 = 5;
 const regResult: usize = 8;
 
+type ToastLangList = (VarTypes, Vec<u64>, Vec<u8>);
+type ToastLangVariable = (VarTypes, u64);
+type ToastLangFunction = (usize, Vec<VarTypes>, VarTypes);
+
 // Holds memory of function
 #[derive(Debug, Clone)]
 pub struct MemoryBlock {
-    pub variableLookup: HashMap<u64, (VarTypes, u64)>,
-    pub listLookup: Vec<(VarTypes, Vec<u64>, Vec<u8>)>
+    pub variableLookup: HashMap<u64, ToastLangVariable>,
+    pub listLookup: Vec<ToastLangList>
     
 }
 
@@ -45,15 +49,15 @@ pub struct VMCore {
     pub cond: u8,
     pub memoryList: Vec<MemoryBlock>,
     /// Key is function Id, Value is (Start pc value, list of param types, Return Type)
-    pub funcList: MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)>,
+    pub funcList: MultiMap<usize, ToastLangFunction>,
     pub curMemoryId: usize,
     pub curFunctionId: usize,
     pub curType: VarTypes,
 }
 
 impl VMCore {
-    pub fn getSystemFunctions() -> MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)> {
-        let mut systemFunctions : MultiMap<usize, (usize, Vec<VarTypes>, VarTypes)> = MultiMap::new();
+    pub fn getSystemFunctions() -> MultiMap<usize, ToastLangFunction> {
+        let mut systemFunctions : MultiMap<usize, ToastLangFunction> = MultiMap::new();
 
         systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::FloatType].to_vec(), VarTypes::NullType ));
         systemFunctions.insert(SystemFunctions::printFunction as usize, (0, [VarTypes::CharType].to_vec() , VarTypes::NullType ));
@@ -204,7 +208,7 @@ impl VMCore {
                             _ => {print!("Unkown Operation")}
                         }
                         println!("Answer: {}", f64::from_bits(self.registers[reg1 as usize]));
-                        self.registers[8 as usize] = self.registers[reg1 as usize];
+                        self.registers[regResult] = self.registers[reg1 as usize];
                     },
                     VarTypes::StringType => {
                         let reg2 = byteCode & bitRegMask;
@@ -330,7 +334,7 @@ impl VMCore {
                                     self.printArray(firstParam.1 as usize);
                                 }else{
                                     // self.printScalar(firstParam.1, firstParam.0);
-                                    self.printScalar(self.registers[8], firstParam.0);
+                                    self.printScalar(self.registers[regResult], firstParam.0);
                                 }
                                 print!("\n");
                             }
@@ -836,7 +840,7 @@ impl ASTConverter {
                 self.free_reg = (self.free_reg + 1) % 8;
 
                 //Load register into bytecode
-                byteCode = byteCode | ((register as u8) << 5) | VarTypes::CharType as u8;
+                byteCode = byteCode | ((register as u8) << bitRegShift) | VarTypes::CharType as u8;
 
                 // Adds to the program list
                 self.program.push(byteCode);
@@ -857,7 +861,7 @@ impl ASTConverter {
                 bytecode = bytecode | (OpCodes::OpLoadArray as u8);
                 self.program.push(bytecode);
                 bytecode = 0;
-                bytecode = bytecode | (register << 5) | VarTypes::CharType as u8;
+                bytecode = bytecode | (register << bitRegShift) | VarTypes::CharType as u8;
 
                 // Adds to the program list
                 self.program.push(bytecode);
@@ -896,7 +900,7 @@ impl ASTConverter {
                 bytecode = bytecode | (OpCodes::OpLoadArray as u8);
                 self.program.push(bytecode);
                 bytecode = 0;
-                bytecode = bytecode | (register << 5); 
+                bytecode = bytecode | (register << bitRegShift); 
                 
                 let elementType: VarTypes;
                 if (listOfExpr.len() < 1) {
@@ -1025,7 +1029,7 @@ impl ASTConverter {
                 self.program.push(byteCode);
                 byteCode = 0;
 
-                byteCode = byteCode | ((register as u8) << 5) | varIdTuple.1 as u8;
+                byteCode = byteCode | ((register as u8) << bitRegShift) | varIdTuple.1 as u8;
                 self.program.push(byteCode);
 
                 for i in range(0, 8){
@@ -1072,7 +1076,7 @@ impl ASTConverter {
                     byteCode = byteCode | OpCodes::OpNewVar as u8;
                     self.program.push(byteCode);
                     byteCode =  0;
-                    byteCode = byteCode | ((register_val as u8) << 5)  | valVarType as u8;
+                    byteCode = byteCode | ((register_val as u8) << bitRegShift)  | valVarType as u8;
                     self.program.push(byteCode);
                     byteCode = 0;
 
@@ -1137,7 +1141,7 @@ impl ASTConverter {
                         byteCode = byteCode | opCode;
                         self.program.push(byteCode);
                         byteCode = 0;
-                        byteCode = ( (reg1 as u8) << 5);
+                        byteCode = ( (reg1 as u8) << bitRegShift);
                         // Loads register to bytecode
                         byteCode = byteCode | (binExprReg as u8);
                         // Pushed bytecode to program list
@@ -1249,7 +1253,7 @@ impl ASTConverter {
                             param_reg = self.ConvertExprToByteCode(param);
                             bytecode = 0 | (OpCodes::OpNewVar as u8);
                             self.program.push(bytecode);
-                            bytecode = 0 | (param_reg.unwrap()) << 5 | (self.curType as u8);
+                            bytecode = 0 | (param_reg.unwrap()) << bitRegShift | (self.curType as u8);
                             self.program.push(bytecode);
                         }
                     }
