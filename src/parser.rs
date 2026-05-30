@@ -436,15 +436,15 @@ impl<'a> Parser <'a>{
             // consumes type
             self.getNewToken();
 
-            // while [Token::OpenSquareBracket, Token::CloseSquareBracket].contains(&self.current_token.unwrap()) {
-            //     TypeName.push_str(self.lexer.slice());
-            //     self.getNewToken();
-            // }
-
-            while ![Token::Equals, Token::ClosingParenthesis, Token::Comma].contains(&self.current_token.unwrap()) {
+            while [Token::OpenSquareBracket, Token::CloseSquareBracket].contains(&self.current_token.unwrap()) {
                 TypeName.push_str(self.lexer.slice());
                 self.getNewToken();
             }
+
+            // while ![Token::Equals, Token::ClosingParenthesis, Token::Comma].contains(&self.current_token.unwrap()) {
+            //     TypeName.push_str(self.lexer.slice());
+            //     self.getNewToken();
+            // }
 
             return Some(ExprAST::VariableHeader { name:IdName, typeName: TypeName });
            },

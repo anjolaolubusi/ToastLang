@@ -229,17 +229,17 @@ impl VMCore {
                 let variableType: VarTypes = num::FromPrimitive::from_u8((program[self.pc] & 0x0F)).unwrap();
                 curMemory.variableLookup.insert(curMemory.variableLookup.len() as u64, ( variableType, self.registers[reg as usize]));
 
-                if variableType == VarTypes::ArrayType {
-                    self.pc += 1;
-                    let dim_num = program[self.pc] as usize;
-                    let mut dim_list: Vec<u8> = vec![0; dim_num];
-                    self.pc += 1;
-                    for i in 0..dim_num {
-                        dim_list[i] = program[self.pc+i];
-                    }
-                    self.pc += dim_num - 1;
-                    curMemory.listLookup.get_mut(self.registers[reg as usize] as usize).unwrap().2 = dim_list;
-                }
+                // if variableType == VarTypes::ArrayType {
+                //     self.pc += 1;
+                //     let dim_num = program[self.pc] as usize;
+                //     let mut dim_list: Vec<u8> = vec![0; dim_num];
+                //     self.pc += 1;
+                //     for i in 0..dim_num {
+                //         dim_list[i] = program[self.pc+i];
+                //     }
+                //     self.pc += dim_num - 1;
+                //     curMemory.listLookup.get_mut(self.registers[reg as usize] as usize).unwrap().2 = dim_list;
+                // }
             },
             OpCodes::OpLoadVar => {
                 self.pc += 1;
@@ -398,8 +398,8 @@ impl VMCore {
                                     arr_flattened.append(self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().1.clone().as_mut());
                                     arr_type = self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().0;
                                     // dim_arr_test.push(self.memoryList.get(self.curMemoryId).unwrap().listLookup.last().unwrap().1.len());
-                                    // self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.pop();
-                                    new_arr.push( (self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.len()-1) as u64 );
+                                    self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.pop();
+                                    // new_arr.push( (self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.len()-1) as u64 );
                                     if (self.pc+1 > program.len()){
                                         break;
                                     }
@@ -414,10 +414,10 @@ impl VMCore {
                         }
                         //TODO: Rework How Multidimensional array are accessed and created
                         //TODO: Pass through variable type + dimesnion specs
-                        let newListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
+                        // let newListId = self.memoryList.get(self.curMemoryId).unwrap().listLookup.len() - 1;
                         
                         // Recursive loop to get flattened array
-                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((arr_type, arr_flattened, dim_arr));
+                        self.memoryList.get_mut(self.curMemoryId).unwrap().listLookup.push((arr_type, arr_flattened.clone(), dim_arr.clone()));
 
                     }
                     _ => println!("Unkown Element Type")
@@ -451,24 +451,39 @@ impl VMCore {
                             self.pc += 1;
                         }
                     }
-                    let arr = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_id as usize).unwrap();
+                    let arr: &(VarTypes, Vec<u64>, Vec<u8>) = self.memoryList.get(self.curMemoryId).unwrap().listLookup.get(array_id as usize).unwrap();
 
                     if elements_indexes.len() > 1 {
-                        let element_index: u64 = *elements_indexes.last().unwrap();
-                        elements_indexes.pop();
-                        let mut cur_arr = arr.1.clone();
-                        for i in 0 .. elements_indexes.len() {
-                            let arr_ref_index = f64::from_bits(*elements_indexes.get(i).unwrap());
-                            let list_index =    *cur_arr.get(arr_ref_index as usize).unwrap() as usize;
-                            let cur_memory = self.memoryList.get(self.curMemoryId).unwrap();
-                            let cur_list: Option<&(VarTypes, Vec<u64>, Vec<u8>)> = cur_memory.listLookup.get(list_index);
-                            cur_arr = cur_list.unwrap().1.clone();
+                        if elements_indexes.len() == arr.2.len() {
+                            let mut ele_pos: f64 = 0.0;
+
+                            for i in 0..elements_indexes.len()-1 {
+                                ele_pos += f64::from_bits(*elements_indexes.get(i).unwrap()) * ((*arr.2.get(i).unwrap() as f64) + 1 as f64);
+                            }
+
+                            ele_pos += f64::from_bits(*elements_indexes.last().unwrap());
+
+                            let num = arr.1.get(ele_pos as usize).unwrap();
+                            self.pc += 1;
+                            println!("Float Value: {}", f64::from_bits(*num));
+                            self.registers[8 as usize] = *num;
+                            self.registers[program[self.pc] as usize] = *num;                            
                         }
-                        let num = cur_arr.get(f64::from_bits(element_index) as usize).unwrap();
-                        self.pc += 1;
-                        println!("Float Value: {}", f64::from_bits(*num));
-                        self.registers[8 as usize] = *num;
-                        self.registers[program[self.pc] as usize] = *num;
+                        // let element_index: u64 = *elements_indexes.last().unwrap();
+                        // elements_indexes.pop();
+                        // let mut cur_arr = arr.1.clone();
+                        // for i in 0 .. elements_indexes.len() {
+                        //     let arr_ref_index = f64::from_bits(*elements_indexes.get(i).unwrap());
+                        //     let list_index =    *cur_arr.get(arr_ref_index as usize).unwrap() as usize;
+                        //     let cur_memory = self.memoryList.get(self.curMemoryId).unwrap();
+                        //     let cur_list: Option<&(VarTypes, Vec<u64>, Vec<u8>)> = cur_memory.listLookup.get(list_index);
+                        //     cur_arr = cur_list.unwrap().1.clone();
+                        // }
+                        // let num = cur_arr.get(f64::from_bits(element_index) as usize).unwrap();
+                        // self.pc += 1;
+                        // println!("Float Value: {}", f64::from_bits(*num));
+                        // self.registers[8 as usize] = *num;
+                        // self.registers[program[self.pc] as usize] = *num;
                     } else {
                         match arr.0 {
                             VarTypes::FloatType => {
@@ -841,6 +856,18 @@ impl ASTConverter {
 
                 // Adds to the program list
                 self.program.push(bytecode);
+
+                let mut dimensions_arr = [val.len(); 1].to_vec();
+                bytecode = OpCodes::OpLoadArrayDimensions as u8;
+                self.program.push(bytecode);
+                bytecode = dimensions_arr.len() as u8;
+                self.program.push(bytecode);
+                for i in 0..dimensions_arr.len() {
+                    bytecode = *dimensions_arr.get(i).unwrap() as u8;
+                    self.program.push(bytecode);
+                }
+                bytecode = OpCodes::OpEndArrayDimensions as u8;
+                self.program.push(bytecode);
                 
                 let bytes_arr = val.as_bytes();
                 for i in (0..bytes_arr.len()){
@@ -946,7 +973,7 @@ impl ASTConverter {
                             self.program.push(OpCodes::OpLoadMultiDimensionalArrayElement as u8);
                             self.ConvertExprToByteCode(listOfExpr[i].clone());
                             self.program.push(OpCodes::OpEndMultiDimensionalArrayElement as u8);
-                            self.curNumListId += 1;
+                            // self.curNumListId += 1;
                         }
                         _ => {panic!("Unimplemented element type")}
                     }
@@ -1009,9 +1036,12 @@ impl ASTConverter {
                 let mut byteCode: u8 = 0;
                 let register_val: u8;
                 if let ExprAST::VariableHeader { name, typeName } = *varObject.to_owned() {
-                    let re = Regex::new(r"\[(\d+)\]").unwrap();
-                    let dimensions_arr: Vec<u64> = re.captures_iter(&typeName).filter_map(|cap| cap[1].parse::<u64>().ok()).collect();
-                    let typeName_cleaned = re.replace_all(&typeName, "").to_string();
+                    // let re = Regex::new(r"\[(\d+)\]").unwrap();
+                    // let dimensions_arr: Vec<u64> = re.captures_iter(&typeName).filter_map(|cap| cap[1].parse::<u64>().ok()).collect();
+                    // let typeName_cleaned = re.replace_all(&typeName, "").to_string();
+
+                    let array_dim_count = typeName.split("[]").count() - 1;
+                    let typeName_cleaned = typeName.replace("[]", "");
                     // let mut valVarType = match typeName_cleaned.as_str() {
                     //     "number" => VarTypes::FloatType,
                     //     "char" => VarTypes::CharType,
@@ -1019,12 +1049,13 @@ impl ASTConverter {
                     //     _ => panic!("Can not compile variable type")
                     // };
                     let mut valVarType = self.GetVarTypeFromString(typeName_cleaned.clone()).unwrap();
-                    let isArray = (dimensions_arr.len() > 0);
+                    // let isArray = (dimensions_arr.len() > 0);
+                    let isArray = (array_dim_count > 0);
                     self.curType = valVarType;
                     register_val = self.ConvertExprToByteCode(*value).expect("Can not compile variable value");
                     
                     if isArray || typeName_cleaned.as_str() == "string" {
-                        self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId, dimensions_arr.clone()));
+                        self.listLookUp.insert(name.clone(), (self.curMemoryBlock, valVarType, self.curNumListId, Vec::<u64>::new()));
                         self.curNumListId += 1;
                         valVarType = VarTypes::ArrayType;
                     }
@@ -1040,20 +1071,20 @@ impl ASTConverter {
                     self.program.push(byteCode);
                     byteCode = 0;
 
-                    if isArray {
-                        //Pass number of array dimensions
-                        byteCode = byteCode | dimensions_arr.len() as u8;
-                        self.program.push(byteCode);
+                    // if isArray {
+                    //     //Pass number of array dimensions
+                    //     byteCode = byteCode | dimensions_arr.len() as u8;
+                    //     self.program.push(byteCode);
 
-                        println!("ARRAY STUFF STARTS AT: {}", self.program.len()-1);
+                    //     println!("ARRAY STUFF STARTS AT: {}", self.program.len()-1);
                         
-                        //Pass over array dimensions
-                        for dim_arr in &dimensions_arr {
-                            byteCode = 0;
-                            byteCode = byteCode | *dim_arr as u8;
-                            self.program.push(byteCode);
-                        }
-                    }
+                    //     //Pass over array dimensions
+                    //     for dim_arr in &dimensions_arr {
+                    //         byteCode = 0;
+                    //         byteCode = byteCode | *dim_arr as u8;
+                    //         self.program.push(byteCode);
+                    //     }
+                    // }
 
 
                     return Some(register_val);
@@ -1313,7 +1344,7 @@ mod tests {
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 2, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 14].to_vec();
+        let true_val: Vec<u8> = [13, 2, 23, 1, 11, 24, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 14].to_vec();
         assert_eq!(ast_converter.program, true_val);
         //assert_eq!(f64::from_bits(toast_vm.registers[7 as usize]), (3 as f64));
     }
@@ -1337,20 +1368,20 @@ mod tests {
 
     #[test]
     fn compileArray(){
-        let source = "let arr: number[4] = [1,2,3,4]";
+        let source = "let arr: number[] = [1,2,3,4]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 4].to_vec();
+        let true_val: Vec<u8> = [13, 1, 23, 1, 4, 24, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 64, 16, 0, 0, 0, 0, 0, 0, 14, 6, 4].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
     #[test]
     fn compileAndRunArray(){
-        let source = "let arr: number[4] = [1,2,3,4]";
+        let source = "let arr: number[] = [1,2,3,4]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1460,20 +1491,20 @@ mod tests {
 
     #[test]
     fn compileElementAccessSingleDimensionalArray(){
-        let source = "let arr: number[3] = [1,2,3] arr[0]";
+        let source = "let arr: number[] = [1,2,3] arr[0]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 1, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 1, 3, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18, 2].to_vec();
+        let true_val: Vec<u8> = [13, 1, 23, 1, 3, 24, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 33, 0, 0, 0, 0, 0, 0, 0, 0, 1, 18, 2].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
     #[test]
     fn compileAndRunElementAccessSingleDimensionalArray(){
-        let source = "let arr: number[3] = [1,2,3] arr[0]";
+        let source = "let arr: number[] = [1,2,3] arr[0]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
@@ -1492,20 +1523,20 @@ mod tests {
 
     #[test]
     fn compileElementAccessMultiDimensionalArray(){
-        let source = "let arr: number[3][3] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let source = "let arr: number[][] = [[1,2,3], [4,5,6]] arr[1][1]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
         for ast in &ast_nodes.unwrap() {
             ast_converter.ConvertExprToByteCode(ast.to_owned());
         }
-        let true_val: Vec<u8> = [13, 4, 20, 13, 33, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 2, 3, 3, 16, 0, 0, 0, 0, 0, 0, 0, 2, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18, 5].to_vec();
+        let true_val: Vec<u8> = [13, 4, 23, 2, 2, 3, 24, 20, 13, 33, 23, 1, 3, 24, 63, 240, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 8, 0, 0, 0, 0, 0, 0, 14, 21, 20, 13, 65, 23, 1, 3, 24, 64, 16, 0, 0, 0, 0, 0, 0, 64, 20, 0, 0, 0, 0, 0, 0, 64, 24, 0, 0, 0, 0, 0, 0, 14, 21, 14, 6, 4, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 97, 63, 240, 0, 0, 0, 0, 0, 0, 3, 18, 17, 1, 129, 63, 240, 0, 0, 0, 0, 0, 0, 4, 18, 5].to_vec();
         assert_eq!(ast_converter.program, true_val);
     }
 
     #[test]
     fn compileAndRunElementAccessMultiDimensionalArray(){
-        let source = "let arr: number[3][3] = [[1,2,3], [4,5,6]] arr[1][1]";
+        let source = "let arr: number[][] = [[1,2,3], [4,5,6]] arr[1][1]";
         let mut parser = Parser::new(source);
         let ast_nodes = parser.parse();
         let mut ast_converter = ASTConverter::new();
