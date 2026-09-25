@@ -1126,7 +1126,7 @@ impl ASTConverter {
                         byteCode = byteCode | opCode;
                         self.program.push(byteCode);
                         byteCode = 0;
-                        byteCode = ( (reg1 as u8) << 5);
+                        byteCode = ( (reg1 as u8) << bitRegShift);
                         // Loads register to bytecode
                         byteCode = byteCode | (reg2 as u8);
                         // Pushed bytecode to program list

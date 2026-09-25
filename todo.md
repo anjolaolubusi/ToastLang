@@ -1,0 +1,47 @@
+#ToastLang 
+- [x] Abstract loading scalars to allow for multiple data types
+- [x] Add the char data type
+- [x] Change Variable Stores (Use hashtable (Key: Variable Id, Value: (VarType, u64 value)))
+- [x] Remove UpdateCurType function
+- [x] Add type checking on operations
+- [x] Add strings
+- [x] Add arrays
+	- [x] Add arr variable type with dynamic types
+- [x] Add print function
+	- [x] Add print numbers function 
+	- [x] Add print char function 
+	- [x] Add print strings function 
+	- [x] Add print arrays function 
+	- [x] Add print variables function 
+	- [x] Figure out issue with multiple variables
+	- [x] Figure out issue with print with binary operation and a variable
+- [ ] Add type checking on functions
+ - [ ] Figure out returning values from expressions and functions
+- [ ] Add loops
+- [ ] Add File Read (Read code from a file)
+- [ ] Turing Complete Test
+- [ ] Improve ToastLang CLI
+	- [ ] Add current session history
+- [ ] Add Debug Mode To ToastLang Kernel
+	- [ ] Mode must act like a true interpreter
+- [ ] Add Compile Mode
+# Future Features
+- [ ] Add Structs/Object
+- [ ] Add print code
+- [ ] Add read user inputs
+- [ ] Add Mutability 
+- [ ] Add String Functions
+- [ ] Add Standard Math Library
+- [ ] Add Library Imports
+- [ ] Optimize Math Expressions
+- [ ] Add Debugger
+- [ ] Add ByteCode explainer
+- [ ] Add Function Explainer
+- [ ] Add Code Comments
+- [ ] Expand Testing
+	- [x] Testing Environment For Parsing
+	- [x] Testing Environment For CodeGen
+	- [ ] Testing Environment For Lexer
+- [ ] Improve Strings
+	- [ ] Arrays of Strings
+	- [ ] String Functions
